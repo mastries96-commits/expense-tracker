@@ -1,0 +1,32 @@
+{
+  "transactions": [
+    {
+      "id": "1777582625562",
+      "date": "2026-04-30",
+      "amount": 254,
+      "category": "Amazon",
+      "description": "",
+      "type": "debit",
+      "card": "Telegram"
+    },
+    {
+      "id": "1777584100730",
+      "date": "2026-04-30",
+      "amount": 20109,
+      "category": "Income",
+      "description": "",
+      "type": "credit",
+      "card": "Telegram"
+    },
+    {
+      "id": "1777585251130",
+      "date": "2026-04-30",
+      "amount": 100,
+      "category": "Income",
+      "description": "",
+      "type": "credit",
+      "card": "Telegram"
+    }
+  ],
+  "fixedCosts": []
+}

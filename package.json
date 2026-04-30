@@ -1,0 +1,15 @@
+{
+  "name": "expense-tracker-bot",
+  "version": "1.0.0",
+  "description": "Telegram expense tracker with live dashboard",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "pg": "^8.11.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
