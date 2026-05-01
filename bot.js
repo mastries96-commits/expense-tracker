@@ -256,6 +256,34 @@ async function handleMsg(msg) {
 
   if (['/balance', '/summary', '/b'].includes(text)) {
     const c = calc(month);
+    // If no income logged this month, show last month's data instead with a note
+    if (c.income === 0) {
+      const [y, mo] = month.split('-');
+      const prevMo  = mo === '01' ? `${+y - 1}-12` : `${y}-${String(+mo - 1).padStart(2, '0')}`;
+      const cp      = calc(prevMo);
+      if (cp.income > 0) {
+        const status = cp.pct >= 100 ? '🔴 OVER BUDGET' : cp.pct >= 80 ? '🟡 NEAR LIMIT' : '🟢 ON TRACK';
+        return say(cid,
+`⚠️ <b>No salary logged for ${ml(month)} yet.</b>
+Showing <b>${ml(prevMo)}</b> instead:
+
+💰 Income:    <b>${f2(cp.income)} AED</b>
+🏠 Fixed:     <b>${f2(cp.fixed)} AED</b>
+💳 Variable:  <b>${f2(cp.variable)} AED</b>
+<code>────────────────────</code>
+💵 Remaining: <b>${f2(cp.left)} AED</b>
+
+<code>${progressBar(cp.pct)}</code> ${cp.pct.toFixed(1)}%
+${status}  ·  ${cp.txN} transactions
+
+💡 Log this month's salary: <code>+20000 salary</code>`,
+          { reply_markup: { inline_keyboard: [[
+            { text: '📋 Report', callback_data: 'report' },
+            { text: '🕐 History', callback_data: 'last' }
+          ]] } }
+        );
+      }
+    }
     const status = c.pct >= 100 ? '🔴 OVER BUDGET' : c.pct >= 80 ? '🟡 NEAR LIMIT' : '🟢 ON TRACK';
     return say(cid,
 `<b>📊 ${ml(month)} — Summary</b>
