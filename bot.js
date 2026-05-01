@@ -31,41 +31,62 @@ const HTML  = path.join(__dirname, 'finance_dashboard.html');
 if (!TOKEN) {
   console.error('\n  ERROR: BOT_TOKEN is not set.');
   console.error('  Create a .env file and add:  BOT_TOKEN=your_token_here');
-  console.error('  Get your token from @BotFather on Telegram.\n');
   process.exit(1);
 }
 
-// ─── PostgreSQL (Railway) ──────────────────────────────────────────────────
-let pgClient = null;
+// ─── Upstash Redis (free HTTP-based storage, no npm needed) ───────────────
+const UPSTASH_URL   = (process.env.UPSTASH_REST_URL   || '').replace(/\/$/, '');
+const UPSTASH_TOKEN = process.env.UPSTASH_REST_TOKEN  || '';
 
-function initDB() {
-  if (!process.env.DATABASE_URL) return;
+function upstashReq(method, urlPath, body) {
+  return new Promise((ok, fail) => {
+    if (!UPSTASH_URL || !UPSTASH_TOKEN) { ok(null); return; }
+    const u    = new URL(UPSTASH_URL + urlPath);
+    const opts = {
+      hostname: u.hostname, path: u.pathname + u.search, method,
+      headers: { 'Authorization': 'Bearer ' + UPSTASH_TOKEN }
+    };
+    let raw = null;
+    if (body !== undefined) {
+      raw = JSON.stringify(body);
+      opts.headers['Content-Type']   = 'application/json';
+      opts.headers['Content-Length'] = Buffer.byteLength(raw);
+    }
+    const req = https.request(opts, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => { try { ok(JSON.parse(d)); } catch { ok(null); } });
+    });
+    req.on('error', e => { console.error('Upstash error:', e.message); ok(null); });
+    if (raw) req.write(raw);
+    req.end();
+  });
+}
+
+async function upstashGet(key) {
+  const r = await upstashReq('GET', '/get/' + encodeURIComponent(key));
+  return r && r.result ? r.result : null;
+}
+
+async function upstashSet(key, value) {
+  // Use POST /set/<key> with value as JSON string in body array form
+  await upstashReq('POST', '/', ['SET', key, typeof value === 'string' ? value : JSON.stringify(value)]);
+}
+
+async function initUpstash() {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
   try {
-    const { Client } = require('pg');
-    pgClient = new Client({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
-    pgClient.connect()
-      .then(() => pgClient.query(`
-        CREATE TABLE IF NOT EXISTS tracker_data (key TEXT PRIMARY KEY, value JSONB NOT NULL)
-      `))
-      .then(() => pgClient.query("SELECT value FROM tracker_data WHERE key='data'"))
-      .then(r => {
-        if (r.rows.length && r.rows[0].value) {
-          // Restore persisted data → local file (survives redeploys)
-          fs.writeFileSync(DATA, JSON.stringify(r.rows[0].value, null, 2), 'utf8');
-          console.log(`  DB:         ${(r.rows[0].value.transactions||[]).length} transactions restored from PostgreSQL`);
-        } else {
-          // First deploy: push existing data.json into DB
-          const local = load();
-          pgClient.query(
-            "INSERT INTO tracker_data(key,value) VALUES('data',$1::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
-            [JSON.stringify(local)]
-          ).catch(e => console.error('  DB init error:', e.message));
-          console.log('  DB:         initialised from local data.json');
-        }
-      })
-      .catch(e => { console.error('  DB connect error:', e.message); pgClient = null; });
+    const stored = await upstashGet('tracker-data');
+    if (stored) {
+      const parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
+      fs.writeFileSync(DATA, JSON.stringify(parsed, null, 2), 'utf8');
+      console.log(`  Redis:      ${(parsed.transactions||[]).length} transactions restored from Upstash`);
+    } else {
+      const local = load();
+      await upstashSet('tracker-data', JSON.stringify(local));
+      console.log('  Redis:      initialised from local data.json');
+    }
   } catch (e) {
-    console.error('  pg require error:', e.message);
+    console.error('  Upstash init error:', e.message);
   }
 }
 
@@ -80,12 +101,10 @@ const sseClients = new Set();
 
 const save = d => {
   fs.writeFileSync(DATA, JSON.stringify(d, null, 2), 'utf8');
-  // Write-through to PostgreSQL on Railway
-  if (pgClient) {
-    pgClient.query(
-      "INSERT INTO tracker_data(key,value) VALUES('data',$1::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value",
-      [JSON.stringify(d)]
-    ).catch(e => console.error('DB write:', e.message));
+  // Write-through to Upstash (async, don't await)
+  if (UPSTASH_URL && UPSTASH_TOKEN) {
+    upstashSet('tracker-data', JSON.stringify(d))
+      .catch(e => console.error('Upstash write:', e.message));
   }
   const payload = `data: ${JSON.stringify(d)}\n\n`;
   for (const client of sseClients) {
@@ -215,9 +234,7 @@ async function handleMsg(msg) {
   /last — last 10 transactions
   /undo — remove last entry
   /fixed — manage recurring monthly costs
-  /help — show this message
-
-📊 <b>Live Dashboard:</b> <a href="http://localhost:${PORT}">localhost:${PORT}</a>`
+  /help — show this message`
     );
   }
 
@@ -447,14 +464,12 @@ Type /help for all commands.`
 }
 
 function parseTx(text) {
-  // Income: +amount [description]
   if (text.startsWith('+')) {
     const parts  = text.slice(1).trim().split(/\s+/);
     const amount = parseFloat(parts[0]);
     if (isNaN(amount) || amount <= 0) return null;
     return { type: 'credit', amount, category: 'Income', description: parts.slice(1).join(' ') };
   }
-  // Expense: amount category [description...]
   const parts  = text.split(/\s+/);
   const amount = parseFloat(parts[0]);
   if (isNaN(amount) || amount <= 0 || !parts[1]) return null;
@@ -472,10 +487,17 @@ const server = http.createServer((req, res) => {
   const { pathname } = url.parse(req.url, true);
 
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  // GET /health — Render.com uptime check
+  if (pathname === '/health') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('ok');
+    return;
+  }
 
   // GET /api/events  — Server-Sent Events for instant dashboard updates
   if (pathname === '/api/events' && req.method === 'GET') {
@@ -487,7 +509,6 @@ const server = http.createServer((req, res) => {
     });
     res.write('data: connected\n\n');
     sseClients.add(res);
-    // Send a keep-alive ping every 25s so the connection doesn't time out
     const ping = setInterval(() => { try { res.write('data: ping\n\n'); } catch { clearInterval(ping); } }, 25000);
     req.on('close', () => { sseClients.delete(res); clearInterval(ping); });
     return;
@@ -500,7 +521,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // POST /api/transaction  (add from dashboard)
+  // POST /api/transaction
   if (pathname === '/api/transaction' && req.method === 'POST') {
     let body = '';
     req.on('data', c => body += c);
@@ -531,10 +552,7 @@ const server = http.createServer((req, res) => {
   // DELETE /api/transaction/last
   if (pathname === '/api/transaction/last' && req.method === 'DELETE') {
     const data = load();
-    if (data.transactions.length) {
-      data.transactions.pop();
-      save(data);
-    }
+    if (data.transactions.length) { data.transactions.pop(); save(data); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
     return;
@@ -570,8 +588,23 @@ server.listen(PORT, '0.0.0.0', () => {
   const ip = getLocalIP();
   console.log(`  Dashboard:  http://localhost:${PORT}`);
   if (ip) console.log(`  On phone:   http://${ip}:${PORT}   ← open this on your phone`);
-  console.log(`  API:        http://localhost:${PORT}/api/data`);
 });
+
+// ─── Render.com free-tier keepalive — ping self every 4 min so the dyno stays awake
+function startKeepalive() {
+  const extUrl = process.env.RENDER_EXTERNAL_URL;
+  if (!extUrl) return;
+  const pingUrl = extUrl.replace(/\/$/, '') + '/health';
+  setInterval(() => {
+    try {
+      const u = new URL(pingUrl);
+      https.get({ hostname: u.hostname, path: u.pathname, headers: { 'User-Agent': 'keepalive' } },
+        r => r.resume()
+      ).on('error', () => {});
+    } catch {}
+  }, 4 * 60 * 1000);
+  console.log('  Keepalive:  pinging ' + pingUrl + ' every 4 min');
+}
 
 // ─── Telegram long-polling ─────────────────────────────────────────────────
 let offset = 0;
@@ -608,13 +641,13 @@ async function poll() {
 // ─── Boot ──────────────────────────────────────────────────────────────────
 console.log('\n  Expense Tracker Bot');
 console.log('  ═══════════════════');
-initDB();
-tg('getMe').then(r => {
-  if (r.ok) {
-    console.log(`  Bot:        @${r.result.username}`);
-    console.log(`  Chat:       https://t.me/${r.result.username}`);
-  } else {
-    console.error('  Could not reach Telegram — check BOT_TOKEN and internet.');
-  }
-}).catch(() => {});
-poll();
+initUpstash().then(() => {
+  tg('getMe').then(r => {
+    if (r.ok) {
+      console.log(`  Bot:        @${r.result.username}`);
+      console.log(`  Chat:       https://t.me/${r.result.username}`);
+    }
+  }).catch(() => {});
+  startKeepalive();
+  poll();
+});
