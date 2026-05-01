@@ -1,6 +1,5 @@
 'use strict';
 
-// Manual .env loader — no npm dependencies needed
 const fs   = require('fs');
 const path = require('path');
 
@@ -15,7 +14,7 @@ try {
     const v = t.slice(eq + 1).trim().replace(/^['"]|['"]$/g, '');
     if (k && !(k in process.env)) process.env[k] = v;
   }
-} catch { /* no .env file, rely on environment */ }
+} catch { /* no .env file */ }
 
 const https = require('https');
 const http  = require('http');
@@ -29,26 +28,24 @@ const DATA  = path.join(__dirname, 'data.json');
 const HTML  = path.join(__dirname, 'finance_dashboard.html');
 
 if (!TOKEN) {
-  console.error('\n  ERROR: BOT_TOKEN is not set.');
-  console.error('  Create a .env file and add:  BOT_TOKEN=your_token_here');
+  console.error('\n  ERROR: BOT_TOKEN is not set.\n');
   process.exit(1);
 }
 
-// ─── Upstash Redis (free HTTP-based storage, no npm needed) ───────────────
+// ─── Upstash Redis ─────────────────────────────────────────────────────────
 const UPSTASH_URL   = (process.env.UPSTASH_REST_URL   || '').replace(/\/$/, '');
 const UPSTASH_TOKEN = process.env.UPSTASH_REST_TOKEN  || '';
 
 function upstashReq(method, urlPath, body) {
-  return new Promise((ok, fail) => {
+  return new Promise((ok) => {
     if (!UPSTASH_URL || !UPSTASH_TOKEN) { ok(null); return; }
+    const raw  = body !== undefined ? JSON.stringify(body) : null;
     const u    = new URL(UPSTASH_URL + urlPath);
     const opts = {
       hostname: u.hostname, path: u.pathname + u.search, method,
       headers: { 'Authorization': 'Bearer ' + UPSTASH_TOKEN }
     };
-    let raw = null;
-    if (body !== undefined) {
-      raw = JSON.stringify(body);
+    if (raw) {
       opts.headers['Content-Type']   = 'application/json';
       opts.headers['Content-Length'] = Buffer.byteLength(raw);
     }
@@ -56,7 +53,7 @@ function upstashReq(method, urlPath, body) {
       let d = ''; res.on('data', c => d += c);
       res.on('end', () => { try { ok(JSON.parse(d)); } catch { ok(null); } });
     });
-    req.on('error', e => { console.error('Upstash error:', e.message); ok(null); });
+    req.on('error', () => ok(null));
     if (raw) req.write(raw);
     req.end();
   });
@@ -68,22 +65,32 @@ async function upstashGet(key) {
 }
 
 async function upstashSet(key, value) {
-  // Use POST /set/<key> with value as JSON string in body array form
-  await upstashReq('POST', '/', ['SET', key, typeof value === 'string' ? value : JSON.stringify(value)]);
+  const v = typeof value === 'string' ? value : JSON.stringify(value);
+  await upstashReq('POST', '/', ['SET', key, v]);
 }
+
+// ─── Boot: restore data + offset from Upstash ──────────────────────────────
+let offset = 0;
 
 async function initUpstash() {
   if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
   try {
+    // Restore tracker data
     const stored = await upstashGet('tracker-data');
     if (stored) {
       const parsed = typeof stored === 'string' ? JSON.parse(stored) : stored;
       fs.writeFileSync(DATA, JSON.stringify(parsed, null, 2), 'utf8');
-      console.log(`  Redis:      ${(parsed.transactions||[]).length} transactions restored from Upstash`);
+      console.log(`  Redis:      ${(parsed.transactions||[]).length} transactions restored`);
     } else {
       const local = load();
       await upstashSet('tracker-data', JSON.stringify(local));
       console.log('  Redis:      initialised from local data.json');
+    }
+    // Restore Telegram offset — prevents re-processing old messages after restart
+    const savedOffset = await upstashGet('tg-offset');
+    if (savedOffset) {
+      offset = parseInt(savedOffset) || 0;
+      console.log(`  TG offset:  ${offset} (restored — bot won't replay old messages)`);
     }
   } catch (e) {
     console.error('  Upstash init error:', e.message);
@@ -96,12 +103,10 @@ const load = () => {
   catch { return { transactions: [], fixedCosts: [] }; }
 };
 
-// SSE clients — every connected browser tab gets instant push on save
 const sseClients = new Set();
 
 const save = d => {
   fs.writeFileSync(DATA, JSON.stringify(d, null, 2), 'utf8');
-  // Write-through to Upstash (async, don't await)
   if (UPSTASH_URL && UPSTASH_TOKEN) {
     upstashSet('tracker-data', JSON.stringify(d))
       .catch(e => console.error('Upstash write:', e.message));
@@ -134,10 +139,10 @@ const say = (id, text, extra = {}) =>
   tg('sendMessage', { chat_id: id, text, parse_mode: 'HTML', ...extra });
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
-const f2     = n  => (+n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const cap    = s  => s ? s[0].toUpperCase() + s.slice(1).toLowerCase() : '';
-const today  = () => new Date().toISOString().slice(0, 10);
-const monthOf = d => (d || today()).slice(0, 7);
+const f2      = n  => (+n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const cap     = s  => s ? s[0].toUpperCase() + s.slice(1).toLowerCase() : '';
+const today   = () => new Date().toISOString().slice(0, 10);
+const monthOf = d  => (d || today()).slice(0, 7);
 const nowMonth = () => monthOf(today());
 
 const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -170,21 +175,31 @@ const progressBar = pct => {
 };
 
 // ─── Monthly calculation ───────────────────────────────────────────────────
+// FIX: Auto-Fixed transactions are the real fixed entries — don't also add
+// the fixedCosts config array for the same month (that was causing double-count).
 function calc(month) {
   const { transactions = [], fixedCosts = [] } = load();
   const rows = transactions.filter(t => monthOf(t.date) === month);
 
+  const hasAutoFixed = rows.some(t => t.card === 'Auto-Fixed');
+
   let income = 0, fixed = 0, variable = 0;
   const cats = {};
 
-  fixedCosts.forEach(({ category, amount }) => {
-    fixed += +amount;
-    cats[category] = (cats[category] || 0) + +amount;
-  });
+  // Use configured fixed costs ONLY when no real Auto-Fixed txns exist yet this month
+  if (!hasAutoFixed) {
+    fixedCosts.forEach(({ category, amount }) => {
+      fixed += +amount;
+      cats[category] = (cats[category] || 0) + +amount;
+    });
+  }
 
-  rows.forEach(({ type, amount, category }) => {
+  rows.forEach(({ type, amount, category, card }) => {
     if (type === 'credit') {
       income += +amount;
+    } else if (card === 'Auto-Fixed') {
+      fixed += +amount;
+      cats[category] = (cats[category] || 0) + +amount;
     } else {
       variable += +amount;
       cats[category] = (cats[category] || 0) + +amount;
@@ -194,12 +209,13 @@ function calc(month) {
   const total = fixed + variable;
   const left  = income - total;
   const pct   = income > 0 ? Math.min(100, total / income * 100) : 0;
-  const txN   = rows.filter(t => t.type === 'debit').length;
+  // FIX: exclude Auto-Fixed from the user-facing transaction count
+  const txN   = rows.filter(t => t.type === 'debit' && t.card !== 'Auto-Fixed').length;
 
   return { income, fixed, variable, total, left, pct, cats, txN };
 }
 
-// ─── Inline keyboard shortcuts ─────────────────────────────────────────────
+// ─── Keyboards ─────────────────────────────────────────────────────────────
 const KB_MAIN = { reply_markup: { inline_keyboard: [[
   { text: '📊 Balance',    callback_data: 'balance' },
   { text: '📂 Categories', callback_data: 'categories' },
@@ -214,7 +230,6 @@ async function handleMsg(msg) {
 
   const month = nowMonth();
 
-  // /start  /help
   if (text === '/start' || text === '/help') {
     return say(cid,
 `<b>💰 Expense Tracker Bot</b>
@@ -238,7 +253,6 @@ async function handleMsg(msg) {
     );
   }
 
-  // /balance  /summary
   if (['/balance', '/summary', '/b'].includes(text)) {
     const c = calc(month);
     const status = c.pct >= 100 ? '🔴 OVER BUDGET' : c.pct >= 80 ? '🟡 NEAR LIMIT' : '🟢 ON TRACK';
@@ -261,7 +275,6 @@ ${status}  ·  ${c.txN} transactions`,
     );
   }
 
-  // /report
   if (['/report', '/r'].includes(text)) {
     const c = calc(month);
     const sorted = Object.entries(c.cats).sort((a, b) => b[1] - a[1]);
@@ -280,7 +293,6 @@ Remaining:   ${f2(c.left)} AED`
     );
   }
 
-  // /categories
   if (['/categories', '/cats', '/c'].includes(text)) {
     const c = calc(month);
     const sorted = Object.entries(c.cats).sort((a, b) => b[1] - a[1]);
@@ -292,7 +304,6 @@ Remaining:   ${f2(c.left)} AED`
     return say(cid, `<b>📂 ${ml(month)} — Categories</b>\n\n${lines}\n\n<b>Total: ${f2(c.total)} AED</b>`);
   }
 
-  // /last [n]
   if (text.startsWith('/last') || text === '/history' || text === '/l') {
     const n = parseInt(text.split(' ')[1] || '10');
     const { transactions = [] } = load();
@@ -306,7 +317,6 @@ Remaining:   ${f2(c.left)} AED`
     return say(cid, `<b>🕐 Last ${recent.length} Transactions</b>\n\n${lines}`);
   }
 
-  // /undo  /delete
   if (text === '/undo' || text === '/delete') {
     const data = load();
     if (!data.transactions.length) return say(cid, 'Nothing to undo.');
@@ -319,13 +329,13 @@ Remaining:   ${f2(c.left)} AED`
     );
   }
 
-  // /fixed
   if (text.startsWith('/fixed')) {
     const parts = text.split(/\s+/);
     const data  = load();
     data.fixedCosts = data.fixedCosts || [];
 
-    if (parts.length === 1) {
+    // /fixed  (list only)
+    if (parts.length === 1 || (parts.length === 2 && parts[1].toLowerCase() === 'costs')) {
       if (!data.fixedCosts.length) {
         return say(cid,
 `<b>🏠 Fixed Monthly Costs</b>
@@ -386,7 +396,6 @@ Remove: <code>/fixed remove Rent</code>`
     );
   }
 
-  // Parse as a transaction
   const tx = parseTx(text);
   if (!tx) {
     return say(cid,
@@ -411,7 +420,6 @@ Type /help for all commands.`
     card: 'Telegram'
   });
 
-  // Auto-deduct configured fixed costs the moment income is received
   let autoFixed = [];
   if (tx.type === 'credit' && (data.fixedCosts||[]).length > 0) {
     const alreadyDone = data.transactions.some(t =>
@@ -444,9 +452,11 @@ Type /help for all commands.`
         `\n  ──────────────────\n  Total fixed: −${f2(autoFixed.reduce((s,f)=>s+(+f.amount),0))} AED`
       : '';
     return say(cid,
-`✅ <b>Salary logged:</b> +${f2(tx.amount)} AED${tx.description ? ` — ${tx.description}` : ''}${fixedBlock}
+`✅ <b>Income logged:</b> +${f2(tx.amount)} AED${tx.description ? ` — ${tx.description}` : ''}${fixedBlock}
 
-💰 Income: ${f2(c.income)} AED
+💰 Income:    ${f2(c.income)} AED
+🏠 Fixed:     ${f2(c.fixed)} AED
+💳 Variable:  ${f2(c.variable)} AED
 💵 Remaining: <b>${f2(c.left)} AED</b>
 <code>${progressBar(c.pct)}</code> ${c.pct.toFixed(1)}%`,
       KB_MAIN
@@ -457,7 +467,7 @@ Type /help for all commands.`
 `${icon(tx.category)} <b>${tx.category}</b> — ${f2(tx.amount)} AED${tx.description ? `\n📝 ${tx.description}` : ''}
 📅 ${fd(today())}
 
-💳 Spent: ${f2(c.total)} AED  ·  💵 Left: <b>${f2(c.left)} AED</b>
+💳 Spent: ${f2(c.variable)} AED  ·  💵 Left: <b>${f2(c.left)} AED</b>
 <code>${progressBar(c.pct)}</code> ${c.pct.toFixed(1)}%`,
     KB_MAIN
   );
@@ -476,37 +486,37 @@ function parseTx(text) {
   return { type: 'debit', amount, category: cap(parts[1]), description: parts.slice(2).join(' ') };
 }
 
-// ─── Callback query handler ────────────────────────────────────────────────
+// ─── Callback query ────────────────────────────────────────────────────────
 async function handleCB(q) {
   await tg('answerCallbackQuery', { callback_query_id: q.id });
   await handleMsg({ chat: q.message.chat, text: '/' + q.data });
 }
 
-// ─── HTTP server (API + dashboard) ────────────────────────────────────────
-const server = http.createServer((req, res) => {
-  const { pathname } = url.parse(req.url, true);
+// ─── JSON body parser ──────────────────────────────────────────────────────
+function readBody(req) {
+  return new Promise(ok => {
+    let b = ''; req.on('data', c => b += c); req.on('end', () => ok(b));
+  });
+}
+
+// ─── HTTP server ───────────────────────────────────────────────────────────
+const server = http.createServer(async (req, res) => {
+  const parsed   = url.parse(req.url, true);
+  const pathname = parsed.pathname;
 
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  // GET /health — Render.com uptime check
-  if (pathname === '/health') {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('ok');
-    return;
-  }
+  const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(obj)); };
 
-  // GET /api/events  — Server-Sent Events for instant dashboard updates
+  // Health check
+  if (pathname === '/health') { res.writeHead(200); res.end('ok'); return; }
+
+  // SSE
   if (pathname === '/api/events' && req.method === 'GET') {
-    res.writeHead(200, {
-      'Content-Type':  'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection':    'keep-alive',
-      'Access-Control-Allow-Origin': '*'
-    });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*' });
     res.write('data: connected\n\n');
     sseClients.add(res);
     const ping = setInterval(() => { try { res.write('data: ping\n\n'); } catch { clearInterval(ping); } }, 25000);
@@ -516,36 +526,21 @@ const server = http.createServer((req, res) => {
 
   // GET /api/data
   if (pathname === '/api/data' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(load()));
-    return;
+    json(200, load()); return;
   }
 
-  // POST /api/transaction
+  // POST /api/transaction — add a transaction
   if (pathname === '/api/transaction' && req.method === 'POST') {
-    let body = '';
-    req.on('data', c => body += c);
-    req.on('end', () => {
-      try {
-        const tx   = JSON.parse(body);
-        const data = load();
-        data.transactions.push({
-          id: Date.now().toString(),
-          date: tx.date || today(),
-          amount: +tx.amount,
-          category: tx.category || 'Other',
-          description: tx.description || '',
-          type: tx.type || 'debit',
-          card: tx.card || 'Manual'
-        });
-        save(data);
-        res.writeHead(201, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
-      } catch {
-        res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: 'invalid json' }));
-      }
-    });
+    try {
+      const tx   = JSON.parse(await readBody(req));
+      const data = load();
+      data.transactions.push({
+        id: Date.now().toString(), date: tx.date || today(),
+        amount: +tx.amount, category: tx.category || 'Other',
+        description: tx.description || '', type: tx.type || 'debit', card: tx.card || 'Manual'
+      });
+      save(data); json(201, { ok: true });
+    } catch { json(400, { ok: false }); }
     return;
   }
 
@@ -553,44 +548,78 @@ const server = http.createServer((req, res) => {
   if (pathname === '/api/transaction/last' && req.method === 'DELETE') {
     const data = load();
     if (data.transactions.length) { data.transactions.pop(); save(data); }
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true }));
+    json(200, { ok: true }); return;
+  }
+
+  // DELETE /api/transaction/:id — delete by ID
+  const txDel = pathname.match(/^\/api\/transaction\/([^/]+)$/);
+  if (txDel && req.method === 'DELETE') {
+    const data = load();
+    const before = data.transactions.length;
+    data.transactions = data.transactions.filter(t => t.id !== txDel[1]);
+    if (data.transactions.length < before) save(data);
+    json(200, { ok: true }); return;
+  }
+
+  // PUT /api/transaction/:id — update a field
+  const txUpd = pathname.match(/^\/api\/transaction\/([^/]+)$/);
+  if (txUpd && req.method === 'PUT') {
+    try {
+      const patch = JSON.parse(await readBody(req));
+      const data  = load();
+      const t = data.transactions.find(tx => tx.id === txUpd[1]);
+      if (t) { Object.assign(t, patch); save(data); }
+      json(200, { ok: !!t });
+    } catch { json(400, { ok: false }); }
     return;
   }
 
-  // GET /  — serve dashboard
+  // POST /api/fixed-cost — add fixed cost
+  if (pathname === '/api/fixed-cost' && req.method === 'POST') {
+    try {
+      const f    = JSON.parse(await readBody(req));
+      const data = load();
+      data.fixedCosts = data.fixedCosts || [];
+      data.fixedCosts.push({ id: Date.now().toString(), name: f.name, category: cap(f.category || f.name), amount: +f.amount });
+      save(data); json(201, { ok: true });
+    } catch { json(400, { ok: false }); }
+    return;
+  }
+
+  // DELETE /api/fixed-cost/:id
+  const fcDel = pathname.match(/^\/api\/fixed-cost\/([^/]+)$/);
+  if (fcDel && req.method === 'DELETE') {
+    const data = load();
+    data.fixedCosts = (data.fixedCosts || []).filter(f => f.id !== fcDel[1]);
+    save(data); json(200, { ok: true }); return;
+  }
+
+  // GET / — serve dashboard
   if ((pathname === '/' || pathname === '/index.html') && req.method === 'GET') {
     try {
-      const html = fs.readFileSync(HTML, 'utf8');
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(html);
-    } catch {
-      res.writeHead(500);
-      res.end('finance_dashboard.html not found in the same folder as bot.js');
-    }
+      res.end(fs.readFileSync(HTML, 'utf8'));
+    } catch { res.writeHead(500); res.end('finance_dashboard.html not found'); }
     return;
   }
 
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'not found' }));
+  json(404, { error: 'not found' });
 });
 
 function getLocalIP() {
-  for (const nets of Object.values(os.networkInterfaces())) {
-    for (const n of nets) {
+  for (const nets of Object.values(os.networkInterfaces()))
+    for (const n of nets)
       if (n.family === 'IPv4' && !n.internal) return n.address;
-    }
-  }
   return null;
 }
 
 server.listen(PORT, '0.0.0.0', () => {
   const ip = getLocalIP();
   console.log(`  Dashboard:  http://localhost:${PORT}`);
-  if (ip) console.log(`  On phone:   http://${ip}:${PORT}   ← open this on your phone`);
+  if (ip) console.log(`  On phone:   http://${ip}:${PORT}`);
 });
 
-// ─── Render.com free-tier keepalive — ping self every 4 min so the dyno stays awake
+// ─── Render.com keepalive ──────────────────────────────────────────────────
 function startKeepalive() {
   const extUrl = process.env.RENDER_EXTERNAL_URL;
   if (!extUrl) return;
@@ -598,22 +627,17 @@ function startKeepalive() {
   setInterval(() => {
     try {
       const u = new URL(pingUrl);
-      https.get({ hostname: u.hostname, path: u.pathname, headers: { 'User-Agent': 'keepalive' } },
-        r => r.resume()
-      ).on('error', () => {});
+      https.get({ hostname: u.hostname, path: u.pathname, headers: { 'User-Agent': 'keepalive' } }, r => r.resume()).on('error', () => {});
     } catch {}
   }, 4 * 60 * 1000);
-  console.log('  Keepalive:  pinging ' + pingUrl + ' every 4 min');
+  console.log('  Keepalive:  every 4 min → ' + pingUrl);
 }
 
 // ─── Telegram long-polling ─────────────────────────────────────────────────
-let offset = 0;
-
 async function poll() {
   try {
     const res = await tg('getUpdates', {
-      offset: offset + 1,
-      timeout: 25,
+      offset: offset + 1, timeout: 25,
       allowed_updates: ['message', 'callback_query']
     });
 
@@ -625,11 +649,14 @@ async function poll() {
           if (u.callback_query) await handleCB(u.callback_query);
         } catch (e) { console.error('Handler error:', e.message); }
       }
+      // Persist offset so restarts don't replay old messages
+      if (UPSTASH_URL && UPSTASH_TOKEN) {
+        upstashSet('tg-offset', String(offset)).catch(() => {});
+      }
     }
 
     if (!res.ok && res.error_code === 401) {
-      console.error('\n  Invalid BOT_TOKEN — check your .env file.\n');
-      process.exit(1);
+      console.error('\n  Invalid BOT_TOKEN.\n'); process.exit(1);
     }
   } catch (e) {
     console.error('Poll error:', e.message);
@@ -643,10 +670,7 @@ console.log('\n  Expense Tracker Bot');
 console.log('  ═══════════════════');
 initUpstash().then(() => {
   tg('getMe').then(r => {
-    if (r.ok) {
-      console.log(`  Bot:        @${r.result.username}`);
-      console.log(`  Chat:       https://t.me/${r.result.username}`);
-    }
+    if (r.ok) console.log(`  Bot:        @${r.result.username}\n  Chat:       https://t.me/${r.result.username}`);
   }).catch(() => {});
   startKeepalive();
   poll();

@@ -557,6 +557,66 @@ body {
   .scorecards { grid-template-columns: 1fr; }
   .month-tabs { display: none; }
 }
+
+/* ── Edit mode ── */
+.edit-toggle-btn {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.edit-toggle-btn.active {
+  background: var(--accent-gold);
+  color: white;
+  border-color: var(--accent-gold);
+}
+.del-btn {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(192,57,43,0.08); border: 1px solid rgba(192,57,43,0.2);
+  color: var(--red); cursor: pointer; font-size: 1rem; font-weight: 700;
+  display: none; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: all 0.2s; line-height: 1;
+}
+.del-btn:hover { background: rgba(192,57,43,0.18); }
+.edit-mode .del-btn { display: flex; }
+.edit-add-row {
+  display: none; gap: 8px; flex-wrap: wrap;
+  padding: 14px; background: var(--main-bg); border-radius: 10px; margin-top: 14px;
+}
+.edit-mode .edit-add-row { display: flex; }
+.add-input {
+  flex: 1; min-width: 90px;
+  background: var(--card-bg); border: 1px solid var(--card-border);
+  border-radius: 8px; padding: 7px 12px;
+  font-family: var(--font-body); font-size: 0.8rem; color: var(--text-primary);
+  outline: none;
+}
+.add-input:focus { border-color: var(--accent-gold); }
+.add-input::placeholder { color: var(--text-muted); }
+.add-btn {
+  background: var(--text-primary); color: white; border: none;
+  border-radius: 8px; padding: 7px 16px;
+  font-family: var(--font-body); font-size: 0.8rem; font-weight: 600; cursor: pointer;
+}
+
+/* ── Report month cards ── */
+.report-card {
+  border-bottom: 1px solid var(--card-border); padding: 16px 0;
+}
+.report-card:last-child { border-bottom: none; }
+.report-bar-track {
+  height: 5px; background: var(--main-bg); border-radius: 99px; overflow: hidden; margin-top: 8px;
+}
+.report-bar-fill {
+  height: 100%; border-radius: 99px;
+  background: linear-gradient(90deg, var(--accent-gold) 0%, #e8c870 100%);
+}
 </style>
 </head>
 <body>
@@ -729,7 +789,10 @@ body {
   <div id="page-transactions" style="display:none">
     <div class="page-header fade-1">
       <h1 class="page-title" id="tx-page-title">Transactions</h1>
-      <span id="tx-summary-label" style="font-size:0.78rem;color:var(--text-muted);align-self:center"></span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span id="tx-summary-label" style="font-size:0.78rem;color:var(--text-muted)"></span>
+        <button class="edit-toggle-btn" id="edit-toggle-btn" onclick="toggleEditMode()">✏️ Edit</button>
+      </div>
     </div>
     <div class="bottom-card fade-2" style="margin-bottom:0">
       <div class="tx-list" id="all-tx-list">
@@ -895,18 +958,19 @@ function renderDashboard(month) {
   let txCount = 0;
 
   data.forEach(r => {
-    const amt = parseFloat((r.Amount||'0').replace(/,/g,'')) || 0;
-    const type = (r.Type||'').toLowerCase();
-    const cat = r.Category || 'Other';
+    const amt     = parseFloat((r.Amount||'0').replace(/,/g,'')) || 0;
+    const type    = (r.Type||'').toLowerCase();
+    const cat     = r.Category || 'Other';
+    const isFixed = r.Card === 'Auto-Fixed' || r.Card === 'Fixed';
 
     if (type === 'credit') {
       salary += amt;
       salaryDate = r.Date;
     } else if (type === 'debit') {
-      txCount++;
-      if (fixedCats.includes(cat.toLowerCase())) {
+      if (isFixed || fixedCats.includes(cat.toLowerCase())) {
         fixedTotal += amt;
       } else {
+        txCount++;   // only count real user-entered transactions
         variableTotal += amt;
         categories[cat] = (categories[cat]||0) + amt;
       }
@@ -1046,6 +1110,7 @@ function renderTransactions(month) {
     const isCredit = (r.Type||'').toLowerCase() === 'credit';
     const desc     = r.Description ? `<span style="color:var(--text-muted);font-size:0.78rem"> — ${r.Description}</span>` : '';
     const cardTag  = r.Card === 'Auto-Fixed' ? `<span style="font-size:0.65rem;background:var(--accent-gold-light);color:var(--accent-gold);border-radius:4px;padding:1px 5px;margin-right:4px">AUTO</span>` : '';
+    const txId     = r._id || '';
     return `
       <div class="tx-item">
         <div class="tx-icon">${getIcon(r.Category)}</div>
@@ -1054,6 +1119,7 @@ function renderTransactions(month) {
           <div class="tx-meta">${cardTag}${r.Card && r.Card !== 'Auto-Fixed' ? r.Card + ' · ' : ''}${r.Date}</div>
         </div>
         <div class="tx-amount ${isCredit ? 'credit' : 'debit'}">${isCredit ? '+' : '−'} ${fmt(amt)} AED</div>
+        ${txId ? `<button class="del-btn" title="Delete" onclick="deleteTransaction('${txId}')">×</button>` : ''}
       </div>`;
   }).join('');
 }
@@ -1091,9 +1157,12 @@ function renderFixed() {
         <div class="sc-free">deducted automatically</div>
       </div>
     </div>
-    <div class="bottom-card fade-2">
-      <div class="bottom-card-title">Configured Costs</div>
-      <div class="tx-list">
+    <div class="bottom-card fade-2" id="fixed-list-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <div class="bottom-card-title" style="margin-bottom:0">Configured Costs</div>
+        <button class="edit-toggle-btn" id="fixed-edit-btn" onclick="toggleFixedEditMode()">✏️ Manage</button>
+      </div>
+      <div class="tx-list" id="fixed-tx-list">
         ${raw.fixedCosts.map(f => `
           <div class="tx-item">
             <div class="tx-icon">${getIcon(f.category)}</div>
@@ -1102,11 +1171,17 @@ function renderFixed() {
               <div class="tx-meta">Auto-deducted · ${f.category}</div>
             </div>
             <div class="tx-amount debit">− ${fmt(+f.amount)} AED</div>
+            <button class="del-btn" title="Remove" onclick="deleteFixedCost('${f.id}')">×</button>
           </div>`).join('')}
       </div>
+      <div class="edit-add-row" id="fixed-add-row">
+        <input class="add-input" id="fc-name"   placeholder="Name (e.g. Rent)" style="min-width:120px"/>
+        <input class="add-input" id="fc-cat"    placeholder="Category"         style="max-width:120px"/>
+        <input class="add-input" id="fc-amount" placeholder="Amount (AED)"     style="max-width:110px" type="number"/>
+        <button class="add-btn" onclick="addFixedCostFromDash()">+ Add</button>
+      </div>
       <div style="margin-top:14px;padding:12px 14px;background:var(--main-bg);border-radius:10px;font-size:0.78rem;color:var(--text-muted)">
-        💡 Deducted automatically when you log income.<br>
-        Remove: <code style="color:var(--text-primary)">/fixed remove Rent</code>
+        💡 Deducted automatically when you log income.
       </div>
     </div>`;
 }
@@ -1232,33 +1307,56 @@ function renderReports() {
     const data = allData.filter(r => (r.Date||'').startsWith(m));
     let income = 0, fixed = 0, variable = 0;
     data.forEach(r => {
-      const amt = parseFloat((r.Amount||'0').replace(/,/g,'')) || 0;
+      const amt     = parseFloat((r.Amount||'0').replace(/,/g,'')) || 0;
+      const isFixed = r.Card === 'Auto-Fixed' || r.Card === 'Fixed';
       if ((r.Type||'').toLowerCase() === 'credit') income += amt;
-      else if (fixedCostCategories.includes((r.Category||'').toLowerCase())) fixed += amt;
+      else if (isFixed || fixedCostCategories.includes((r.Category||'').toLowerCase())) fixed += amt;
       else variable += amt;
     });
-    const total     = fixed + variable;
-    const remaining = income - total;
-    const pct       = income > 0 ? Math.min(100, total/income*100) : 0;
-    const [y, mo]   = m.split('-');
-    const isCurrent = m === currentMonth;
-    const statusCol = pct >= 100 ? 'var(--red)' : pct >= 80 ? 'var(--accent-gold)' : 'var(--green)';
+    const total      = fixed + variable;
+    const saved      = income - total;
+    const savingsRate = income > 0 ? Math.max(0, saved / income * 100) : 0;
+    const pct        = income > 0 ? Math.min(100, total / income * 100) : 0;
+    const [y, mo]    = m.split('-');
+    const isCurrent  = m === currentMonth;
+    const statusCol  = pct >= 100 ? 'var(--red)' : pct >= 80 ? 'var(--accent-gold)' : 'var(--green)';
+    const saveCol    = saved >= 0 ? 'var(--green)' : 'var(--red)';
+    const txCount    = data.filter(r => (r.Type||'').toLowerCase()==='debit' && r.Card !== 'Auto-Fixed' && r.Card !== 'Fixed').length;
 
     return `
-      <div class="tx-item" style="cursor:pointer;padding:14px 0" onclick="jumpToMonth('${m}')">
-        <div class="tx-icon" style="background:${isCurrent ? 'var(--accent-gold-light)' : 'var(--main-bg)'}">${isCurrent ? '📍' : '📅'}</div>
-        <div class="tx-info">
-          <div class="tx-name" style="font-weight:600">${MN_FULL[parseInt(mo)-1]} ${y}</div>
-          <div class="tx-meta">
-            Fixed ${fmt(fixed)} · Variable ${fmt(variable)} ·
-            <span style="color:${statusCol}">${pct.toFixed(0)}% used</span>
+      <div class="report-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div class="tx-icon" style="background:${isCurrent ? 'var(--accent-gold-light)' : 'var(--main-bg)'}">
+              ${isCurrent ? '📍' : '📅'}
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:0.95rem;cursor:pointer" onclick="jumpToMonth('${m}')">
+                ${MN_FULL[parseInt(mo)-1]} ${y}
+                <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;margin-left:4px">${txCount} transactions</span>
+              </div>
+              <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px">
+                Income <b style="color:var(--text-primary)">${fmt(income)}</b> ·
+                Fixed <b style="color:var(--text-primary)">${fmt(fixed)}</b> ·
+                Variable <b style="color:var(--text-primary)">${fmt(variable)}</b>
+              </div>
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:0.95rem;font-weight:700;color:${saveCol}">
+              ${saved >= 0 ? '+' : ''}${fmt(saved)} AED
+            </div>
+            <div style="font-size:0.7rem;color:var(--text-muted)">
+              ${saved >= 0 ? `saved · ${savingsRate.toFixed(0)}% rate` : 'over budget'}
+            </div>
           </div>
         </div>
-        <div style="text-align:right;flex-shrink:0">
-          <div style="font-size:0.875rem;font-weight:600;color:${remaining>=0?'var(--text-primary)':'var(--red)'}">
-            ${remaining<0?'−':''}${fmt(Math.abs(remaining))} AED
-          </div>
-          <div style="font-size:0.72rem;color:var(--text-muted)">remaining</div>
+        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--text-muted);margin-bottom:4px">
+          <span style="color:${statusCol}">Budget ${pct.toFixed(0)}% used</span>
+          <span>${fmt(total)} / ${fmt(income)} AED</span>
+        </div>
+        <div class="report-bar-track">
+          <div class="report-bar-fill" style="width:${Math.min(100,pct).toFixed(1)}%;background:${pct>=100?'var(--red)':pct>=80?'var(--accent-gold)':'var(--accent-gold)'}"></div>
         </div>
       </div>`;
   }).join('');
@@ -1268,6 +1366,76 @@ function jumpToMonth(month) {
   currentMonth = month;
   const dashItem = document.querySelector('.sidebar-item');
   showPage('dashboard', dashItem);
+}
+
+// ── Edit mode ─────────────────────────────────────────────────────────────
+let editMode = false;
+let fixedEditMode = false;
+
+function toggleEditMode() {
+  editMode = !editMode;
+  const btn = document.getElementById('edit-toggle-btn');
+  btn.textContent = editMode ? '✓ Done' : '✏️ Edit';
+  btn.classList.toggle('active', editMode);
+  const card = document.getElementById('all-tx-list').closest('.bottom-card');
+  if (card) card.classList.toggle('edit-mode', editMode);
+  // Re-render so delete buttons show/hide
+  renderTransactions(currentMonth);
+  if (editMode) {
+    // Re-add edit-mode class after re-render
+    setTimeout(() => {
+      const c = document.getElementById('all-tx-list').closest('.bottom-card');
+      if (c) c.classList.add('edit-mode');
+    }, 0);
+  }
+}
+
+function toggleFixedEditMode() {
+  fixedEditMode = !fixedEditMode;
+  const btn = document.getElementById('fixed-edit-btn');
+  if (btn) { btn.textContent = fixedEditMode ? '✓ Done' : '✏️ Manage'; btn.classList.toggle('active', fixedEditMode); }
+  const card = document.getElementById('fixed-list-card');
+  if (card) card.classList.toggle('edit-mode', fixedEditMode);
+}
+
+async function deleteTransaction(id) {
+  if (!id) return;
+  if (!confirm('Delete this transaction?')) return;
+  try {
+    const base = location.protocol !== 'file:' ? '' : `http://localhost:${localStorage.getItem('finance-bot-port')||'3000'}`;
+    await fetch(base + '/api/transaction/' + id, { method: 'DELETE' });
+    // SSE will push the update; fallback: poll once
+    await pollFallback();
+  } catch(e) { alert('Could not delete: ' + e.message); }
+}
+
+async function deleteFixedCost(id) {
+  if (!id) return;
+  if (!confirm('Remove this fixed cost?')) return;
+  try {
+    const base = location.protocol !== 'file:' ? '' : `http://localhost:${localStorage.getItem('finance-bot-port')||'3000'}`;
+    await fetch(base + '/api/fixed-cost/' + id, { method: 'DELETE' });
+    await pollFallback();
+  } catch(e) { alert('Could not remove: ' + e.message); }
+}
+
+async function addFixedCostFromDash() {
+  const name   = (document.getElementById('fc-name').value || '').trim();
+  const cat    = (document.getElementById('fc-cat').value  || name).trim();
+  const amount = parseFloat(document.getElementById('fc-amount').value);
+  if (!name || isNaN(amount) || amount <= 0) { alert('Please fill Name and Amount.'); return; }
+  try {
+    const base = location.protocol !== 'file:' ? '' : `http://localhost:${localStorage.getItem('finance-bot-port')||'3000'}`;
+    const r = await fetch(base + '/api/fixed-cost', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, category: cat, amount })
+    });
+    if (!r.ok) throw new Error('Server error');
+    document.getElementById('fc-name').value = '';
+    document.getElementById('fc-cat').value  = '';
+    document.getElementById('fc-amount').value = '';
+    await pollFallback();
+  } catch(e) { alert('Could not add: ' + e.message); }
 }
 
 // ── Fixed cost categories ─────────────────────────────────────────────────
@@ -1371,7 +1539,7 @@ function parseLocalData(json) {
 
   (json.transactions||[]).forEach(t =>
     allData.push({ Date: t.date, Amount: String(t.amount), Type: t.type,
-                   Category: t.category, Card: t.card||'Cash', Description: t.description||'' })
+                   Category: t.category, Card: t.card||'Cash', Description: t.description||'', _id: t.id||'' })
   );
 
   buildMonthTabs();
