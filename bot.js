@@ -105,11 +105,12 @@ const load = () => {
 
 const sseClients = new Set();
 
-const save = d => {
+// Synchronous file write + awaited Upstash write so data is never lost on restart
+const save = async d => {
   fs.writeFileSync(DATA, JSON.stringify(d, null, 2), 'utf8');
   if (UPSTASH_URL && UPSTASH_TOKEN) {
-    upstashSet('tracker-data', JSON.stringify(d))
-      .catch(e => console.error('Upstash write:', e.message));
+    try { await upstashSet('tracker-data', JSON.stringify(d)); }
+    catch(e) { console.error('Upstash write:', e.message); }
   }
   const payload = `data: ${JSON.stringify(d)}\n\n`;
   for (const client of sseClients) {
@@ -321,7 +322,7 @@ Remaining:   ${f2(c.left)} AED`
     const data = load();
     if (!data.transactions.length) return say(cid, 'Nothing to undo.');
     const t = data.transactions.pop();
-    save(data);
+    await save(data);
     const sign = t.type === 'credit' ? '+' : '-';
     return say(cid,
 `↩️ <b>Removed:</b> ${icon(t.category)} ${sign}${f2(t.amount)} AED — ${t.category}${t.description ? ` (${t.description})` : ''}
@@ -371,7 +372,7 @@ Remove: <code>/fixed remove Rent</code>`
       const name     = parts.slice(3).join(' ');
       const category = cap(parts[3]);
       data.fixedCosts.push({ id: Date.now().toString(), name, category, amount });
-      save(data);
+      await save(data);
       return say(cid, `✅ Added fixed cost: <b>${name}</b> — ${f2(amount)} AED/month`);
     }
 
@@ -382,7 +383,7 @@ Remove: <code>/fixed remove Rent</code>`
         f => f.name.toLowerCase() !== name && f.category.toLowerCase() !== name
       );
       if (data.fixedCosts.length < before) {
-        save(data);
+        await save(data);
         return say(cid, `✅ Removed: <b>${parts.slice(2).join(' ')}</b>`);
       }
       return say(cid, `❌ Not found: <b>${parts.slice(2).join(' ')}</b>`);
@@ -422,26 +423,30 @@ Type /help for all commands.`
 
   let autoFixed = [];
   if (tx.type === 'credit' && (data.fixedCosts||[]).length > 0) {
-    const alreadyDone = data.transactions.some(t =>
-      monthOf(t.date) === month && t.card === 'Auto-Fixed'
-    );
-    if (!alreadyDone) {
-      data.fixedCosts.forEach((f, i) => {
-        data.transactions.push({
-          id: String(baseId + i + 1),
-          date: today(),
-          amount: f.amount,
-          category: f.category,
-          description: f.name,
-          type: 'debit',
-          card: 'Auto-Fixed'
+    const totalFixed = data.fixedCosts.reduce((s, f) => s + (+f.amount || 0), 0);
+    // Only auto-deduct when income covers the fixed costs (prevents small top-ups from triggering)
+    if (tx.amount >= totalFixed) {
+      const alreadyDone = data.transactions.some(t =>
+        monthOf(t.date) === month && t.card === 'Auto-Fixed'
+      );
+      if (!alreadyDone) {
+        data.fixedCosts.forEach((f, i) => {
+          data.transactions.push({
+            id: String(baseId + i + 1),
+            date: today(),
+            amount: f.amount,
+            category: f.category,
+            description: f.name,
+            type: 'debit',
+            card: 'Auto-Fixed'
+          });
+          autoFixed.push(f);
         });
-        autoFixed.push(f);
-      });
+      }
     }
   }
 
-  save(data);
+  await save(data);
 
   const c = calc(month);
 
@@ -539,7 +544,7 @@ const server = http.createServer(async (req, res) => {
         amount: +tx.amount, category: tx.category || 'Other',
         description: tx.description || '', type: tx.type || 'debit', card: tx.card || 'Manual'
       });
-      save(data); json(201, { ok: true });
+      await save(data); json(201, { ok: true });
     } catch { json(400, { ok: false }); }
     return;
   }
@@ -547,7 +552,7 @@ const server = http.createServer(async (req, res) => {
   // DELETE /api/transaction/last
   if (pathname === '/api/transaction/last' && req.method === 'DELETE') {
     const data = load();
-    if (data.transactions.length) { data.transactions.pop(); save(data); }
+    if (data.transactions.length) { data.transactions.pop(); await save(data); }
     json(200, { ok: true }); return;
   }
 
@@ -557,7 +562,7 @@ const server = http.createServer(async (req, res) => {
     const data = load();
     const before = data.transactions.length;
     data.transactions = data.transactions.filter(t => t.id !== txDel[1]);
-    if (data.transactions.length < before) save(data);
+    if (data.transactions.length < before) await save(data);
     json(200, { ok: true }); return;
   }
 
@@ -568,7 +573,7 @@ const server = http.createServer(async (req, res) => {
       const patch = JSON.parse(await readBody(req));
       const data  = load();
       const t = data.transactions.find(tx => tx.id === txUpd[1]);
-      if (t) { Object.assign(t, patch); save(data); }
+      if (t) { Object.assign(t, patch); await save(data); }
       json(200, { ok: !!t });
     } catch { json(400, { ok: false }); }
     return;
@@ -581,7 +586,7 @@ const server = http.createServer(async (req, res) => {
       const data = load();
       data.fixedCosts = data.fixedCosts || [];
       data.fixedCosts.push({ id: Date.now().toString(), name: f.name, category: cap(f.category || f.name), amount: +f.amount });
-      save(data); json(201, { ok: true });
+      await save(data); json(201, { ok: true });
     } catch { json(400, { ok: false }); }
     return;
   }
@@ -591,7 +596,7 @@ const server = http.createServer(async (req, res) => {
   if (fcDel && req.method === 'DELETE') {
     const data = load();
     data.fixedCosts = (data.fixedCosts || []).filter(f => f.id !== fcDel[1]);
-    save(data); json(200, { ok: true }); return;
+    await save(data); json(200, { ok: true }); return;
   }
 
   // GET / — serve dashboard

@@ -924,7 +924,8 @@ function parseCSV(text) {
 
 function buildMonthTabs() {
   const months = [...new Set(allData.map(r => (r.Date||'').substring(0,7)).filter(Boolean))].sort().reverse();
-  currentMonth = months[0] || '';
+  // Preserve the user's selected month across SSE updates; only default to latest on first load
+  if (!currentMonth || !months.includes(currentMonth)) currentMonth = months[0] || '';
 
   const tabsEl = document.getElementById('month-tabs');
   const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -1543,8 +1544,6 @@ function parseLocalData(json) {
   );
 
   buildMonthTabs();
-  if (!currentMonth && allData.length)
-    currentMonth = allData[allData.length-1].Date.slice(0,7);
   renderCurrentPage();
 }
 
