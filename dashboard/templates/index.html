@@ -2,8 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Expense Tracker</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#1E293B" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Expenses" />
+  <link rel="apple-touch-icon" href="/static/icon-192.png" />
+
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
   <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -340,7 +349,7 @@
 
     /* ── Undo FAB ────────────────────────────────────────── */
     #undo-fab {
-      position: fixed; bottom: 80px; right: 28px;
+      position: fixed; bottom: 28px; right: 28px;
       z-index: 8888;
       display: flex; align-items: center; gap: 8px;
       padding: 12px 20px;
@@ -351,11 +360,93 @@
       box-shadow: 0 4px 20px rgba(239,68,68,.45);
       transition: transform .15s, box-shadow .15s;
     }
-    #undo-fab:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 8px 28px rgba(239,68,68,.55);
-    }
+    #undo-fab:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(239,68,68,.55); }
     #undo-fab:active { transform: translateY(0); }
+
+    /* ── Add Entry FAB ───────────────────────────────────── */
+    #add-fab {
+      position: fixed; bottom: 28px; left: 268px;
+      z-index: 8888;
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 22px;
+      background: var(--income); color: #fff;
+      border: none; border-radius: 50px;
+      font-size: .9rem; font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(16,185,129,.45);
+      transition: transform .15s, box-shadow .15s;
+    }
+    #add-fab:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(16,185,129,.55); }
+    #add-fab:active { transform: translateY(0); }
+
+    /* ── Add Entry Modal ─────────────────────────────────── */
+    #add-modal {
+      position: fixed; inset: 0; z-index: 9990;
+      background: rgba(0,0,0,.55);
+      display: none; align-items: flex-end; justify-content: center;
+    }
+    .add-sheet {
+      background: var(--card);
+      border-radius: 24px 24px 0 0;
+      padding: 28px 24px 40px;
+      width: 100%; max-width: 540px;
+      box-shadow: 0 -8px 40px rgba(0,0,0,.18);
+      animation: slideUp .22s ease;
+    }
+    @keyframes slideUp { from { transform: translateY(60px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+    .add-tab-bar {
+      display: flex; gap: 8px; margin-bottom: 22px;
+    }
+    .add-tab {
+      flex: 1; padding: 10px; border-radius: 10px;
+      border: 1.5px solid var(--border);
+      background: transparent; color: var(--muted);
+      font-size: .85rem; font-weight: 600;
+      cursor: pointer; transition: .15s;
+    }
+    .add-tab.active {
+      background: var(--income); border-color: var(--income); color: #fff;
+    }
+    .add-tab.salary-active {
+      background: var(--primary); border-color: var(--primary); color: #fff;
+    }
+    .field-label {
+      font-size: .78rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .05em; color: var(--muted); margin-bottom: 6px;
+    }
+    .field-input {
+      width: 100%; padding: 12px 14px; border-radius: 12px;
+      border: 1.5px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: .95rem; font-family: inherit;
+      outline: none; transition: border-color .15s;
+      -webkit-appearance: none;
+    }
+    .field-input:focus { border-color: var(--primary); }
+    .submit-btn {
+      width: 100%; padding: 14px; border-radius: 12px;
+      border: none; font-size: 1rem; font-weight: 700;
+      cursor: pointer; transition: .15s; margin-top: 18px;
+      color: #fff;
+    }
+    .submit-btn:active { opacity: .85; transform: scale(.98); }
+    .submit-btn-expense { background: var(--income); }
+    .submit-btn-salary  { background: var(--primary); }
+
+    /* ── iOS safe area ───────────────────────────────────── */
+    @supports (padding-bottom: env(safe-area-inset-bottom)) {
+      .add-sheet { padding-bottom: max(40px, env(safe-area-inset-bottom)); }
+      #undo-fab  { bottom: max(28px, calc(env(safe-area-inset-bottom) + 12px)); }
+      #add-fab   { bottom: max(28px, calc(env(safe-area-inset-bottom) + 12px)); }
+    }
+
+    /* ── Mobile: hide sidebar, full width ────────────────── */
+    @media (max-width: 640px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; padding: 20px 16px 120px; }
+      #add-fab { left: 50%; transform: translateX(-50%); bottom: 90px; }
+      #add-fab:hover, #add-fab:active { transform: translateX(-50%) translateY(-2px); }
+      #undo-fab { bottom: 28px; right: 16px; padding: 11px 16px; font-size: .78rem; }
+    }
   </style>
 </head>
 <body>
@@ -591,11 +682,80 @@
   </div>
 </main>
 
+<button id="add-fab" onclick="showAddModal()">
+  <i class="fa-solid fa-plus"></i> Add Entry
+</button>
+
 <button id="undo-fab" onclick="showUndoModal()">
   <i class="fa-solid fa-rotate-left"></i> Undo
 </button>
 
 <div id="toast"></div>
+
+<!-- Add Entry modal -->
+<div id="add-modal" onclick="if(event.target===this)closeAddModal()">
+  <div class="add-sheet">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+      <span style="font-size:1.05rem;font-weight:700;color:var(--text)">Add Entry</span>
+      <button onclick="closeAddModal()" style="background:none;border:none;font-size:1.3rem;color:var(--muted);cursor:pointer;padding:0 4px">×</button>
+    </div>
+
+    <div class="add-tab-bar">
+      <button class="add-tab active" id="tab-expense" onclick="switchAddTab('expense')">
+        <i class="fa-solid fa-receipt me-1"></i> Expense
+      </button>
+      <button class="add-tab" id="tab-salary" onclick="switchAddTab('salary')">
+        <i class="fa-solid fa-arrow-down-to-line me-1"></i> Salary / Income
+      </button>
+    </div>
+
+    <!-- Expense form -->
+    <div id="add-expense-form">
+      <div class="mb-3">
+        <div class="field-label">Category</div>
+        <input id="f-category" class="field-input" type="text" placeholder="food, groceries, petrol…" list="cat-list" autocomplete="off" autocorrect="off" />
+        <datalist id="cat-list">
+          <option value="food"><option value="groceries"><option value="petrol">
+          <option value="shopping"><option value="entertainment"><option value="health">
+          <option value="transport"><option value="utilities"><option value="education">
+          <option value="savings"><option value="kfc"><option value="starbucks">
+          <option value="spinneys"><option value="carrefour"><option value="lulu">
+          <option value="adnoc"><option value="uber"><option value="netflix">
+        </datalist>
+      </div>
+      <div class="mb-3">
+        <div class="field-label">Amount (AED)</div>
+        <input id="f-amount" class="field-input" type="number" placeholder="0.00" min="0" step="0.01" inputmode="decimal" />
+      </div>
+      <div class="mb-3">
+        <div class="field-label">Description <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>
+        <input id="f-desc" class="field-input" type="text" placeholder="e.g. weekly shop, filled tank…" />
+      </div>
+      <div class="mb-1">
+        <div class="field-label">Date</div>
+        <input id="f-date" class="field-input" type="date" />
+      </div>
+      <button class="submit-btn submit-btn-expense" onclick="submitExpense()">
+        <i class="fa-solid fa-check me-2"></i> Save Expense
+      </button>
+    </div>
+
+    <!-- Salary form -->
+    <div id="add-salary-form" style="display:none">
+      <div style="background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:12px;padding:12px 16px;margin-bottom:18px;font-size:.82rem;color:var(--muted)">
+        <i class="fa-solid fa-circle-info me-1" style="color:var(--primary)"></i>
+        This will <strong>close the current month</strong> and open the next one with your fixed costs auto-deducted.
+      </div>
+      <div class="mb-3">
+        <div class="field-label">Salary / Income (AED)</div>
+        <input id="f-salary" class="field-input" type="number" placeholder="15000" min="0" step="0.01" inputmode="decimal" />
+      </div>
+      <button class="submit-btn submit-btn-salary" onclick="submitSalary()">
+        <i class="fa-solid fa-check me-2"></i> Record Salary
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- Undo confirmation modal -->
 <div id="undo-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center" onclick="if(event.target===this)closeUndoModal()">
@@ -963,6 +1123,92 @@ async function confirmUndo() {
   toast(data.message || 'Undone');
   btn.disabled = false;
   btn.innerHTML = 'Undo';
+}
+
+// ── Add Entry ────────────────────────────────────────────────────────────────
+function showAddModal() {
+  // Default date to today
+  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('f-category').value = '';
+  document.getElementById('f-amount').value = '';
+  document.getElementById('f-desc').value = '';
+  document.getElementById('f-salary').value = '';
+  switchAddTab('expense');
+  document.getElementById('add-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('f-category').focus(), 300);
+}
+
+function closeAddModal() {
+  document.getElementById('add-modal').style.display = 'none';
+}
+
+function switchAddTab(tab) {
+  const isExpense = tab === 'expense';
+  document.getElementById('add-expense-form').style.display = isExpense ? '' : 'none';
+  document.getElementById('add-salary-form').style.display  = isExpense ? 'none' : '';
+  document.getElementById('tab-expense').className = 'add-tab' + (isExpense ? ' active' : '');
+  document.getElementById('tab-salary').className  = 'add-tab' + (!isExpense ? ' salary-active' : '');
+}
+
+async function submitExpense() {
+  const cat    = document.getElementById('f-category').value.trim();
+  const amount = parseFloat(document.getElementById('f-amount').value);
+  const desc   = document.getElementById('f-desc').value.trim();
+  const date   = document.getElementById('f-date').value;
+
+  if (!cat)        { toast('Enter a category'); return; }
+  if (!amount || amount <= 0) { toast('Enter a valid amount'); return; }
+
+  const btn = document.querySelector('.submit-btn-expense');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i> Saving…';
+
+  const r = await fetch('/api/add-expense', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ category: cat, amount, description: desc, date }),
+  });
+  if (r.status === 401) { location.href = '/login'; return; }
+  const data = await r.json();
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-check me-2"></i> Save Expense';
+
+  if (data.error === 'no_active_month') {
+    toast('No active month — record a salary first');
+    return;
+  }
+  if (!data.ok) { toast('Error saving expense'); return; }
+
+  closeAddModal();
+  await refreshAll();
+  toast(`✓ ${data.category.charAt(0).toUpperCase()+data.category.slice(1)} — ${AED(amount)} saved`);
+}
+
+async function submitSalary() {
+  const amount = parseFloat(document.getElementById('f-salary').value);
+  if (!amount || amount <= 0) { toast('Enter a valid salary amount'); return; }
+
+  const btn = document.querySelector('.submit-btn-salary');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i> Saving…';
+
+  const r = await fetch('/api/add-salary', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount }),
+  });
+  if (r.status === 401) { location.href = '/login'; return; }
+  const data = await r.json();
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-check me-2"></i> Record Salary';
+
+  if (!data.ok) { toast('Error saving salary'); return; }
+
+  closeAddModal();
+  await refreshAll();
+  toast(`✓ ${AED(amount)} salary recorded — ${data.month} ${data.year} active`);
 }
 
 // ── Reclassify ───────────────────────────────────────────────────────────────
@@ -1532,6 +1778,11 @@ function toast(msg) {
   el.textContent = msg;
   el.style.display = 'block';
   setTimeout(() => { el.style.display = 'none'; }, 2500);
+}
+
+// ── Service Worker registration ───────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
 }
 
 // ── Init ─────────────────────────────────────────────────────────────────────

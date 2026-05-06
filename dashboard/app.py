@@ -1,11 +1,13 @@
 import calendar
+import datetime as _dt
 import os
+import socket
 import sys
 from functools import wraps
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from flask import Flask, jsonify, render_template, request, redirect, url_for, session
+from flask import Flask, Response, jsonify, render_template, request, redirect, url_for, session, send_from_directory
 
 from config import DASHBOARD_PORT, FIXED_COSTS, DASHBOARD_PASSWORD, SECRET_KEY, CATEGORY_ALIASES, EXPENSE_CATEGORIES
 from database import Database
@@ -45,6 +47,34 @@ def login():
 def logout():
     session.pop('authenticated', None)
     return redirect(url_for('login'))
+
+
+# ── PWA assets ────────────────────────────────────────────────────────────────
+
+@app.route('/manifest.json')
+def manifest():
+    return jsonify({
+        "name": "Expense Tracker",
+        "short_name": "Expenses",
+        "description": "Personal UAE expense tracker",
+        "start_url": "/",
+        "display": "standalone",
+        "background_color": "#F0F4F8",
+        "theme_color": "#1E293B",
+        "orientation": "portrait-primary",
+        "icons": [
+            {"src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+            {"src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
+        ],
+    })
+
+
+@app.route('/sw.js')
+def service_worker():
+    resp = send_from_directory(app.static_folder, 'sw.js')
+    resp.headers['Service-Worker-Allowed'] = '/'
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -135,7 +165,85 @@ def api_month(month_id):
     return jsonify(payload)
 
 
-# ── Undo API ─────────────────────────────────────────────────────────────────
+@app.route("/api/network-info")
+@login_required
+def api_network_info():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        ip = "127.0.0.1"
+    return jsonify({"ip": ip, "port": DASHBOARD_PORT})
+
+
+# ── Entry API (dashboard / mobile app) ───────────────────────────────────────
+
+@app.route("/api/add-expense", methods=["POST"])
+@login_required
+def api_add_expense():
+    data = request.get_json()
+    raw_cat = (data.get("category") or "").strip().lower()
+    try:
+        amount = float(data.get("amount") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid_amount"}), 400
+    description = (data.get("description") or "").strip()
+    date_str = data.get("date") or str(_dt.date.today())
+
+    if not raw_cat or amount <= 0:
+        return jsonify({"error": "invalid_input"}), 400
+
+    first_word = raw_cat.split()[0]
+    category = CATEGORY_ALIASES.get(first_word, first_word)
+
+    active = db.get_active_month()
+    if not active:
+        return jsonify({"error": "no_active_month"}), 400
+
+    db.add_expense(active["id"], category, amount, description, date_str)
+    balance = db.get_balance(active["id"])
+    return jsonify({"ok": True, "balance": balance, "category": category})
+
+
+@app.route("/api/add-salary", methods=["POST"])
+@login_required
+def api_add_salary():
+    data = request.get_json()
+    try:
+        amount = float(data.get("amount") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid_amount"}), 400
+
+    if amount <= 0:
+        return jsonify({"error": "invalid_amount"}), 400
+
+    prev = db.get_active_month()
+    if prev:
+        db.close_month(prev["id"])
+        if prev["month"] == 12:
+            new_year, new_month = prev["year"] + 1, 1
+        else:
+            new_year, new_month = prev["year"], prev["month"] + 1
+    else:
+        now = _dt.datetime.now()
+        new_year, new_month = now.year, now.month
+
+    month_id = db.create_or_get_month(new_year, new_month, amount)
+    db.add_fixed_costs(month_id, FIXED_COSTS)
+    balance = db.get_balance(month_id)
+
+    return jsonify({
+        "ok": True,
+        "month": calendar.month_name[new_month],
+        "year": new_year,
+        "salary": amount,
+        "balance": balance,
+    })
+
+
+# ── Undo API ──────────────────────────────────────────────────────────────────
 
 @app.route("/api/undo", methods=["POST"])
 @login_required
@@ -155,7 +263,6 @@ def api_undo():
             "balance": balance,
         })
 
-    # No expenses — undo the salary entry
     prev = db.get_last_closed_month()
     db.delete_month_cascade(active["id"])
     if prev:
@@ -194,7 +301,6 @@ def api_update_description(expense_id):
 @app.route("/api/reclassify", methods=["POST"])
 @login_required
 def api_reclassify():
-    """Re-categorise all expenses using the full alias table."""
     months = db.get_all_months()
     fixed_count = 0
     for m in months:
@@ -207,7 +313,6 @@ def api_reclassify():
 
             words = original_cat.split()
             if len(words) > 1:
-                # e.g. "food layla" → category "food", description "layla"
                 first = words[0]
                 resolved = CATEGORY_ALIASES.get(first, first)
                 if resolved in EXPENSE_CATEGORIES or resolved != first:
@@ -216,7 +321,6 @@ def api_reclassify():
                     new_desc = " ".join(filter(None, [extra, desc]))
 
             if not new_cat:
-                # single-word merchant alias  e.g. "spinneys" → "groceries"
                 resolved = CATEGORY_ALIASES.get(original_cat)
                 if resolved:
                     new_cat = resolved
