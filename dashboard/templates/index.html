@@ -337,6 +337,106 @@
     }
     .cat-bar-fill { height: 100%; border-radius: 4px; transition: width .4s; }
 
+    /* ── Chat box ────────────────────────────────────────── */
+    .chat-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      margin-bottom: 24px;
+      overflow: hidden;
+    }
+    .chat-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px 0;
+      font-size: .75rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted);
+    }
+    .chat-clear {
+      background: none; border: none; color: var(--muted);
+      font-size: .75rem; cursor: pointer; padding: 2px 6px;
+      border-radius: 6px; transition: .15s;
+    }
+    .chat-clear:hover { color: var(--expense); background: rgba(239,68,68,.07); }
+    .chat-messages {
+      padding: 12px 16px 4px;
+      max-height: 240px;
+      overflow-y: auto;
+      display: flex; flex-direction: column; gap: 8px;
+      scroll-behavior: smooth;
+    }
+    .chat-messages:empty + .chat-empty { display: flex; }
+    .chat-empty {
+      display: none; align-items: center; gap: 8px;
+      padding: 14px 16px;
+      color: var(--muted); font-size: .82rem;
+    }
+    .chat-bubble {
+      max-width: 82%;
+      padding: 9px 13px;
+      border-radius: 16px;
+      font-size: .84rem;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .chat-bubble-user {
+      align-self: flex-end;
+      background: var(--income);
+      color: #fff;
+      border-bottom-right-radius: 4px;
+    }
+    .chat-bubble-bot {
+      align-self: flex-start;
+      background: var(--bg);
+      color: var(--text);
+      border-bottom-left-radius: 4px;
+    }
+    .chat-bubble-err {
+      align-self: flex-start;
+      background: rgba(239,68,68,.09);
+      color: var(--expense);
+      border-bottom-left-radius: 4px;
+    }
+    .chat-input-row {
+      display: flex; align-items: center; gap: 0;
+      padding: 10px 12px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .chat-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-right: none;
+      border-radius: 22px 0 0 22px;
+      padding: 11px 16px;
+      font-size: .9rem; font-family: inherit;
+      color: var(--text); outline: none;
+      transition: border-color .15s;
+      -webkit-appearance: none;
+    }
+    .chat-input:focus { border-color: var(--income); }
+    .chat-send {
+      padding: 11px 18px;
+      background: var(--income); color: #fff;
+      border: none; border-radius: 0 22px 22px 0;
+      font-size: .85rem; font-weight: 700;
+      cursor: pointer; transition: .15s;
+      white-space: nowrap;
+    }
+    .chat-send:active { opacity: .8; }
+    .chat-chips {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      padding: 0 12px 10px;
+    }
+    .chat-chip {
+      padding: 4px 12px; border-radius: 20px;
+      border: 1px solid var(--border);
+      background: var(--bg); color: var(--muted);
+      font-size: .75rem; font-weight: 600;
+      cursor: pointer; transition: .15s;
+    }
+    .chat-chip:hover { border-color: var(--income); color: var(--income); }
+
     /* ── Toast ───────────────────────────────────────────── */
     #toast {
       position: fixed; bottom: 24px; right: 24px;
@@ -501,6 +601,33 @@
           <span class="status-dot" id="status-dot"></span>
           <span id="header-status">—</span>
         </span>
+      </div>
+    </div>
+
+    <!-- Chat box -->
+    <div class="chat-card">
+      <div class="chat-header">
+        <span><i class="fa-solid fa-comment-dots me-1" style="color:var(--income)"></i> Quick Entry</span>
+        <button class="chat-clear" onclick="clearChat()" title="Clear chat">Clear</button>
+      </div>
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-empty" id="chat-empty">
+        <i class="fa-solid fa-keyboard" style="font-size:1rem"></i>
+        Type like Telegram — <strong style="margin-left:4px">food 150</strong>, <strong style="margin-left:4px">kfc 80 dinner</strong>, <strong style="margin-left:4px">salary 15000</strong>
+      </div>
+      <div class="chat-chips">
+        <span class="chat-chip" onclick="chipSend('balance')">balance</span>
+        <span class="chat-chip" onclick="chipSend('undo')">undo</span>
+        <span class="chat-chip" onclick="chipSend('help')">help</span>
+      </div>
+      <div class="chat-input-row">
+        <input id="chat-input" class="chat-input" type="text"
+          placeholder="food 150, kfc 80 dinner, salary 15000…"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+          onkeydown="if(event.key==='Enter')sendChat()" />
+        <button class="chat-send" onclick="sendChat()">
+          <i class="fa-solid fa-paper-plane"></i>
+        </button>
       </div>
     </div>
 
@@ -1059,6 +1186,64 @@ function renderTransactions(d) {
       </tr></thead>
       <tbody>${tbody}</tbody>
     </table>`;
+}
+
+// ── Chat ─────────────────────────────────────────────────────────────────────
+let chatLog = JSON.parse(sessionStorage.getItem('et-chat') || '[]');
+
+function renderChat() {
+  const box   = document.getElementById('chat-messages');
+  const empty = document.getElementById('chat-empty');
+  if (!chatLog.length) {
+    box.innerHTML = '';
+    empty.style.display = 'flex';
+    return;
+  }
+  empty.style.display = 'none';
+  box.innerHTML = chatLog.map(m => {
+    const cls = m.role === 'user' ? 'chat-bubble-user'
+              : m.ok === false    ? 'chat-bubble-err'
+              : 'chat-bubble-bot';
+    return `<div class="chat-bubble ${cls}">${m.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`;
+  }).join('');
+  box.scrollTop = box.scrollHeight;
+}
+
+function clearChat() {
+  chatLog = [];
+  sessionStorage.removeItem('et-chat');
+  renderChat();
+}
+
+function chipSend(text) {
+  document.getElementById('chat-input').value = text;
+  sendChat();
+}
+
+async function sendChat() {
+  const input = document.getElementById('chat-input');
+  const text  = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  input.focus();
+
+  chatLog.push({ role: 'user', text, ok: true });
+  if (chatLog.length > 40) chatLog = chatLog.slice(-40);
+  renderChat();
+
+  const r = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  });
+  if (r.status === 401) { location.href = '/login'; return; }
+  const data = await r.json();
+
+  chatLog.push({ role: 'bot', text: data.message, ok: data.ok });
+  sessionStorage.setItem('et-chat', JSON.stringify(chatLog));
+  renderChat();
+
+  if (data.refresh) await refreshAll();
 }
 
 // ── Undo ─────────────────────────────────────────────────────────────────────
@@ -1788,6 +1973,7 @@ if ('serviceWorker' in navigator) {
 // ── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
   applyTheme(localStorage.getItem('et-theme') || 'light');
+  renderChat();
   await refreshAll();
   setInterval(refreshAll, 30000);
 })();

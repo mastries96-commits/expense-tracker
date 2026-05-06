@@ -1,6 +1,7 @@
 import calendar
 import datetime as _dt
 import os
+import re
 import socket
 import sys
 from functools import wraps
@@ -330,6 +331,153 @@ def api_reclassify():
                 fixed_count += 1
 
     return jsonify({"ok": True, "fixed": fixed_count})
+
+
+# ── Chat API (Telegram-style natural language entry) ──────────────────────────
+
+@app.route("/api/chat", methods=["POST"])
+@login_required
+def api_chat():
+    text = ((request.get_json(silent=True) or {}).get("text") or "").strip()
+    if not text:
+        return jsonify({"ok": False, "message": "Empty message."})
+
+    now = _dt.datetime.now()
+    cmd = text.lower().lstrip("/")
+
+    # ── balance ───────────────────────────────────────────────────────────────
+    if cmd in ("balance", "b"):
+        active = db.get_active_month()
+        if not active:
+            return jsonify({"ok": True, "refresh": False,
+                "message": "⚠️ No active month. Record your salary first."})
+        data   = db.get_month_details(active["id"])
+        fixed  = sum(f["amount"] for f in data["fixed_costs"])
+        spent  = sum(e["amount"] for e in data["expenses"])
+        bal    = db.get_balance(active["id"])
+        by_cat = db.get_expenses_summary(active["id"])
+        lines  = [
+            f"💰 {calendar.month_name[active['month']]} {active['year']}",
+            f"Salary:    AED {active['salary']:>10,.2f}",
+            f"Fixed:     AED {fixed:>10,.2f}",
+            f"Expenses:  AED {spent:>10,.2f}",
+            f"─────────────────────",
+            f"Remaining: AED {bal:>10,.2f}",
+        ]
+        if by_cat:
+            lines.append("")
+            for cat, total in sorted(by_cat.items(), key=lambda x: -x[1]):
+                emoji = EXPENSE_CATEGORIES.get(cat, "💸")
+                lines.append(f"{emoji} {cat.capitalize()}: AED {total:,.2f}")
+        return jsonify({"ok": True, "refresh": False, "message": "\n".join(lines)})
+
+    # ── summary ───────────────────────────────────────────────────────────────
+    if cmd in ("summary", "s"):
+        active = db.get_active_month()
+        if not active:
+            return jsonify({"ok": True, "refresh": False, "message": "⚠️ No active month."})
+        data      = db.get_month_details(active["id"])
+        fixed_tot = sum(f["amount"] for f in data["fixed_costs"])
+        var_tot   = sum(e["amount"] for e in data["expenses"])
+        bal       = db.get_balance(active["id"])
+        sav_pct   = (bal / active["salary"] * 100) if active["salary"] else 0
+        return jsonify({"ok": True, "refresh": False,
+            "message": (
+                f"📊 {calendar.month_name[active['month']]} {active['year']}\n"
+                f"Salary:   AED {active['salary']:,.2f}\n"
+                f"Fixed:    AED {fixed_tot:,.2f}\n"
+                f"Variable: AED {var_tot:,.2f}\n"
+                f"Balance:  AED {bal:,.2f} ({sav_pct:.1f}%)"
+            )})
+
+    # ── undo ──────────────────────────────────────────────────────────────────
+    if cmd in ("undo", "u"):
+        active = db.get_active_month()
+        if not active:
+            return jsonify({"ok": True, "refresh": False, "message": "Nothing to undo."})
+        expense = db.get_last_expense(active["id"])
+        if expense:
+            db.delete_expense(expense["id"])
+            bal = db.get_balance(active["id"])
+            return jsonify({"ok": True, "refresh": True,
+                "message": (f"↩️ Deleted: {expense['category'].capitalize()} — AED {expense['amount']:,.2f}\n"
+                            f"💰 Balance: AED {bal:,.2f}")})
+        prev = db.get_last_closed_month()
+        db.delete_month_cascade(active["id"])
+        if prev:
+            db.reopen_month(prev["id"])
+            return jsonify({"ok": True, "refresh": True,
+                "message": f"↩️ Salary undone. {calendar.month_name[prev['month']]} {prev['year']} restored."})
+        return jsonify({"ok": True, "refresh": True, "message": "↩️ Salary entry undone."})
+
+    # ── help ──────────────────────────────────────────────────────────────────
+    if cmd in ("help", "h", "?"):
+        return jsonify({"ok": True, "refresh": False, "message": (
+            "💡 What you can type:\n\n"
+            "food 150\n"
+            "kfc 80 dinner\n"
+            "spinneys 300 weekly\n"
+            "petrol 200 filled up\n"
+            "savings 500\n"
+            "salary 15000\n"
+            "balance  →  check balance\n"
+            "undo     →  remove last entry"
+        )})
+
+    # ── +Salary / salary <amount> ─────────────────────────────────────────────
+    sal_match = re.match(r"^\+?salary\s+([\d,]+(?:\.\d+)?)", text, re.IGNORECASE)
+    if sal_match:
+        amount = float(sal_match.group(1).replace(",", ""))
+        prev   = db.get_active_month()
+        if prev:
+            db.close_month(prev["id"])
+            new_year  = prev["year"] + 1 if prev["month"] == 12 else prev["year"]
+            new_month = 1 if prev["month"] == 12 else prev["month"] + 1
+        else:
+            new_year, new_month = now.year, now.month
+        month_id  = db.create_or_get_month(new_year, new_month, amount)
+        db.add_fixed_costs(month_id, FIXED_COSTS)
+        fixed_tot = sum(FIXED_COSTS.values())
+        balance   = amount - fixed_tot
+        deductions = "\n".join(f"  • {n}: AED {v:,.2f}" for n, v in FIXED_COSTS.items())
+        return jsonify({"ok": True, "refresh": True, "message": (
+            f"✅ Salary AED {amount:,.2f} recorded\n\n"
+            f"📌 Fixed costs deducted:\n{deductions}\n\n"
+            f"📅 {calendar.month_name[new_month]} {new_year} is now active\n"
+            f"💵 Available: AED {balance:,.2f}"
+        )})
+
+    # ── Expense: "food 150", "kfc 80 dinner", "+petrol 200" ──────────────────
+    exp_match = re.match(
+        r"^\+?([a-zA-Z][a-zA-Z\s\-'&]*?)\s+([\d,]+(?:\.\d+)?)\s*(.*)?$", text
+    )
+    if exp_match and not text.startswith("/"):
+        pre          = exp_match.group(1).strip()
+        amount       = float(exp_match.group(2).replace(",", ""))
+        post         = (exp_match.group(3) or "").strip()
+        pre_words    = pre.split()
+        raw_category = pre_words[0].lower()
+        extra        = " ".join(pre_words[1:])
+        description  = " ".join(filter(None, [extra, post]))
+        category     = CATEGORY_ALIASES.get(raw_category, raw_category)
+
+        active = db.get_active_month()
+        if not active:
+            return jsonify({"ok": False, "refresh": False,
+                "message": "⚠️ No active month. Record your salary first."})
+
+        db.add_expense(active["id"], category, amount, description, str(now.date()))
+        balance = db.get_balance(active["id"])
+        emoji   = EXPENSE_CATEGORIES.get(category, "💸")
+        warning = "\n⚠️ Balance running low!" if balance < 500 else ""
+        desc_ln = f"\n📝 {description}" if description else ""
+        return jsonify({"ok": True, "refresh": True, "message": (
+            f"{emoji} {category.capitalize()} — AED {amount:,.2f}{desc_ln}\n"
+            f"💰 Remaining: AED {balance:,.2f}{warning}"
+        )})
+
+    return jsonify({"ok": False, "refresh": False,
+        "message": "❓ Didn't get that. Try: food 150, kfc 80, salary 15000, balance, undo, help"})
 
 
 if __name__ == "__main__":
