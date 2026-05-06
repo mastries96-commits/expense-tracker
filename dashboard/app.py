@@ -122,6 +122,11 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/health")
+def health():
+    return "ok", 200
+
+
 # ── Data API ──────────────────────────────────────────────────────────────────
 
 @app.route("/api/current")
@@ -478,6 +483,23 @@ def api_chat():
 
     return jsonify({"ok": False, "refresh": False,
         "message": "❓ Didn't get that. Try: food 150, kfc 80, salary 15000, balance, undo, help"})
+
+
+# ── Telegram webhook setup ────────────────────────────────────────────────────
+
+@app.route("/setup-webhook")
+@login_required
+def setup_webhook():
+    import urllib.request, json as _json
+    token = os.environ.get("BOT_TOKEN", "")
+    if not token:
+        return "BOT_TOKEN not set", 500
+    host = request.host_url.rstrip("/")
+    webhook_url = f"{host}/webhook/{token}"
+    api_url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
+    with urllib.request.urlopen(api_url) as r:
+        result = _json.loads(r.read())
+    return jsonify({"webhook_url": webhook_url, "telegram_response": result})
 
 
 # ── Telegram webhook (used when deployed on Render/cloud) ────────────────────
