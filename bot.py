@@ -401,7 +401,8 @@ async def cmd_undo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ── Entry point ────────────────────────────────────────────────────────────────
 
 def build_application():
-    """Build and return the configured Application (used by both polling and webhook)."""
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN is not set. Add it to your .env file or Render environment variables.")
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(CommandHandler(["start", "help"], cmd_start))
     application.add_handler(CommandHandler("balance", cmd_balance))

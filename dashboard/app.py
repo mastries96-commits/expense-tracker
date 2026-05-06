@@ -493,7 +493,7 @@ def setup_webhook():
     import urllib.request, json as _json
     token = os.environ.get("BOT_TOKEN", "")
     if not token:
-        return "BOT_TOKEN not set", 500
+        return jsonify({"error": "BOT_TOKEN is not set in Render environment variables. Add it in the Render dashboard under Environment."}), 500
     host = request.host_url.rstrip("/")
     webhook_url = f"{host}/webhook/{token}"
     api_url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
@@ -516,8 +516,12 @@ def _get_tg_app():
     return _tg_app
 
 
-@app.route(f"/webhook/{os.environ.get('BOT_TOKEN','token')}", methods=["POST"])
-def telegram_webhook():
+_BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+
+@app.route(f"/webhook/<token>", methods=["POST"])
+def telegram_webhook(token):
+    if not _BOT_TOKEN or token != _BOT_TOKEN:
+        return "forbidden", 403
     import asyncio
     from telegram import Update
     tg = _get_tg_app()
