@@ -533,29 +533,26 @@ def setup_webhook():
 
 # ── Telegram webhook (used when deployed on Render/cloud) ────────────────────
 
-_tg_app = None
-
-def _get_tg_app():
-    global _tg_app
-    if _tg_app is None:
-        import asyncio
-        from bot import build_application
-        _tg_app = build_application()
-        asyncio.run(_tg_app.initialize())
-    return _tg_app
-
-
 _BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
-@app.route(f"/webhook/<token>", methods=["POST"])
+@app.route("/webhook/<token>", methods=["POST"])
 def telegram_webhook(token):
     if not _BOT_TOKEN or token != _BOT_TOKEN:
         return "forbidden", 403
     import asyncio
     from telegram import Update
-    tg = _get_tg_app()
-    update = Update.de_json(request.get_json(force=True), tg.bot)
-    asyncio.run(tg.process_update(update))
+    from bot import build_application
+
+    payload = request.get_json(force=True)
+
+    async def _handle():
+        tg_app = build_application()
+        await tg_app.initialize()
+        update = Update.de_json(payload, tg_app.bot)
+        await tg_app.process_update(update)
+        await tg_app.shutdown()
+
+    asyncio.run(_handle())
     return "ok"
 
 
