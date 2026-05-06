@@ -127,6 +127,20 @@ def health():
     return "ok", 200
 
 
+@app.route("/api/debug-write")
+def debug_write():
+    import traceback
+    try:
+        active = db.get_active_month()
+        if not active:
+            return jsonify({"step": "get_active_month", "result": None})
+        eid = db.add_expense(active["id"], "debugtest", 0.01, "auto-debug", str(_dt.date.today()))
+        bal = db.get_balance(active["id"])
+        return jsonify({"ok": True, "expense_id": eid, "balance": bal, "month_id": active["id"]})
+    except Exception as e:
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
+
 @app.route("/api/import-data", methods=["POST"])
 def api_import_data():
     # One-time import endpoint — secured with SECRET_KEY as a bearer token
