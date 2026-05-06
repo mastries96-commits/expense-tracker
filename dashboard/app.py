@@ -127,6 +127,35 @@ def health():
     return "ok", 200
 
 
+@app.route("/api/import-data", methods=["POST"])
+def api_import_data():
+    # One-time import endpoint — secured with SECRET_KEY as a bearer token
+    auth = request.headers.get("Authorization", "")
+    if auth != f"Bearer {SECRET_KEY}":
+        return jsonify({"error": "forbidden"}), 403
+    data = request.get_json()
+    with db._conn() as conn:
+        conn.execute("DELETE FROM expenses")
+        conn.execute("DELETE FROM fixed_costs")
+        conn.execute("DELETE FROM months")
+        for m in data.get("months", []):
+            conn.execute(
+                "INSERT INTO months (id, year, month, salary, status, created_at, closed_at) VALUES (?,?,?,?,?,?,?)",
+                (m["id"], m["year"], m["month"], m["salary"], m["status"], m["created_at"], m.get("closed_at"))
+            )
+        for f in data.get("fixed_costs", []):
+            conn.execute(
+                "INSERT INTO fixed_costs (id, month_id, name, amount) VALUES (?,?,?,?)",
+                (f["id"], f["month_id"], f["name"], f["amount"])
+            )
+        for e in data.get("expenses", []):
+            conn.execute(
+                "INSERT INTO expenses (id, month_id, category, amount, description, expense_date, created_at) VALUES (?,?,?,?,?,?,?)",
+                (e["id"], e["month_id"], e["category"], e["amount"], e["description"], e["expense_date"], e["created_at"])
+            )
+    return jsonify({"ok": True, "months": len(data.get("months", [])), "expenses": len(data.get("expenses", []))})
+
+
 # ── Data API ──────────────────────────────────────────────────────────────────
 
 @app.route("/api/current")
