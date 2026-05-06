@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: expense-tracker
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn run:flask_app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    envVars:
+      - key: RENDER
+        value: "true"
+      - key: BOT_TOKEN
+        sync: false        # you set this in Render dashboard
+      - key: DASHBOARD_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: DB_PATH
+        value: /var/data/expenses.db
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1

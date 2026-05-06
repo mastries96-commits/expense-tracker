@@ -1,41 +1,37 @@
 """
-Starts both the Telegram bot and the Flask dashboard in parallel.
-
-  python run.py
-
-Dashboard → http://localhost:5000
+Local:  python run.py  → Flask dashboard + Telegram bot (polling)
+Render: gunicorn run:flask_app  → Flask only (bot uses webhook)
 """
-import threading
 import logging
-import sys
 import os
+import sys
 
-# Make sure the package root is importable
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from dashboard.app import app
-from config import DASHBOARD_PORT
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s",
     level=logging.INFO,
 )
 
-
-def start_dashboard():
-    logging.info("Dashboard starting at http://localhost:%s", DASHBOARD_PORT)
-    app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=False, use_reloader=False)
-
-
-def start_bot():
-    from bot import main
-    logging.info("Telegram bot starting…")
-    main()
-
+from dashboard.app import app as flask_app  # noqa: E402  (used by gunicorn)
 
 if __name__ == "__main__":
-    t = threading.Thread(target=start_dashboard, daemon=True, name="dashboard")
-    t.start()
+    from config import DASHBOARD_PORT
 
-    # Bot runs in main thread (owns the asyncio event loop)
-    start_bot()
+    if os.environ.get("RENDER"):
+        # Cloud: Flask serves everything; Telegram uses webhook
+        logging.info("Running on Render — webhook mode, port %s", DASHBOARD_PORT)
+        flask_app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=False, use_reloader=False)
+    else:
+        # Local: run Flask in background thread + bot polling in main thread
+        import threading
+        t = threading.Thread(
+            target=lambda: flask_app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=False, use_reloader=False),
+            daemon=True, name="dashboard",
+        )
+        t.start()
+        logging.info("Dashboard → http://localhost:%s", DASHBOARD_PORT)
+
+        from bot import main as bot_main
+        logging.info("Telegram bot starting (polling)…")
+        bot_main()

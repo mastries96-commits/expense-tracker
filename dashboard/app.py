@@ -480,5 +480,29 @@ def api_chat():
         "message": "❓ Didn't get that. Try: food 150, kfc 80, salary 15000, balance, undo, help"})
 
 
+# ── Telegram webhook (used when deployed on Render/cloud) ────────────────────
+
+_tg_app = None
+
+def _get_tg_app():
+    global _tg_app
+    if _tg_app is None:
+        import asyncio
+        from bot import build_application
+        _tg_app = build_application()
+        asyncio.run(_tg_app.initialize())
+    return _tg_app
+
+
+@app.route(f"/webhook/{os.environ.get('BOT_TOKEN','token')}", methods=["POST"])
+def telegram_webhook():
+    import asyncio
+    from telegram import Update
+    tg = _get_tg_app()
+    update = Update.de_json(request.get_json(force=True), tg.bot)
+    asyncio.run(tg.process_update(update))
+    return "ok"
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=DASHBOARD_PORT, debug=True, use_reloader=False)

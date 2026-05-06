@@ -400,20 +400,24 @@ async def cmd_undo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
+def build_application():
+    """Build and return the configured Application (used by both polling and webhook)."""
+    application = Application.builder().token(BOT_TOKEN).build()
+    application.add_handler(CommandHandler(["start", "help"], cmd_start))
+    application.add_handler(CommandHandler("balance", cmd_balance))
+    application.add_handler(CommandHandler("summary", cmd_summary))
+    application.add_handler(CommandHandler("history", cmd_history))
+    application.add_handler(CommandHandler("dashboard", cmd_dashboard))
+    application.add_handler(CommandHandler("delete", cmd_delete))
+    application.add_handler(CommandHandler("undo", cmd_undo))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    return application
+
+
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler(["start", "help"], cmd_start))
-    app.add_handler(CommandHandler("balance", cmd_balance))
-    app.add_handler(CommandHandler("summary", cmd_summary))
-    app.add_handler(CommandHandler("history", cmd_history))
-    app.add_handler(CommandHandler("dashboard", cmd_dashboard))
-    app.add_handler(CommandHandler("delete", cmd_delete))
-    app.add_handler(CommandHandler("undo", cmd_undo))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
+    application = build_application()
     logger.info("Bot is polling…")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
