@@ -6,9 +6,6 @@ from config import DB_PATH, TURSO_URL, TURSO_TOKEN
 
 _use_turso = bool(TURSO_URL and TURSO_TOKEN)
 
-if _use_turso:
-    import libsql_experimental as libsql
-
 
 def _dict_factory(cursor, row):
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
@@ -22,18 +19,16 @@ class Database:
     @contextmanager
     def _conn(self):
         if _use_turso:
-            conn = libsql.connect(self.db_path, sync_url=TURSO_URL, auth_token=TURSO_TOKEN)
-            conn.sync()
+            from turso_client import TursoConnection
+            conn = TursoConnection(TURSO_URL, TURSO_TOKEN)
         else:
             conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.row_factory = _dict_factory
             conn.execute("PRAGMA journal_mode=WAL")
 
-        conn.row_factory = _dict_factory
         try:
             yield conn
             conn.commit()
-            if _use_turso:
-                conn.sync()
         except Exception:
             conn.rollback()
             raise
