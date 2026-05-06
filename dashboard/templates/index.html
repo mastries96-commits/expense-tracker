@@ -1,0 +1,1546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Expense Tracker</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:       #F0F4F8;
+      --card:     #FFFFFF;
+      --primary:  #3B82F6;
+      --income:   #10B981;
+      --expense:  #EF4444;
+      --fixed:    #F59E0B;
+      --balance:  #6366F1;
+      --savings:  #14B8A6;
+      --text:     #1E293B;
+      --muted:    #64748B;
+      --border:   #E2E8F0;
+      --radius:   14px;
+      --shadow:   0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────── */
+    .sidebar {
+      position: fixed; top: 0; left: 0;
+      width: 240px; height: 100vh;
+      background: #1E293B;
+      display: flex; flex-direction: column;
+      padding: 28px 20px;
+      z-index: 100;
+      overflow-y: auto;
+    }
+    .sidebar .brand {
+      display: flex; align-items: center; gap: 10px;
+      color: #fff; font-size: 1.1rem; font-weight: 700;
+      margin-bottom: 36px;
+    }
+    .sidebar .brand i { font-size: 1.4rem; color: var(--income); }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 11px 14px; border-radius: 10px;
+      color: #94A3B8; font-size: .875rem; font-weight: 500;
+      cursor: pointer; transition: all .18s; margin-bottom: 4px;
+      text-decoration: none;
+    }
+    .nav-item:hover, .nav-item.active {
+      background: rgba(255,255,255,.08); color: #fff;
+    }
+    .nav-item.active { background: var(--primary); color: #fff; }
+    .nav-item i { width: 18px; text-align: center; }
+    .sidebar-footer {
+      margin-top: auto;
+      color: #475569; font-size: .75rem; text-align: center;
+    }
+    .refresh-btn {
+      width: 100%; padding: 10px; border-radius: 10px;
+      background: rgba(255,255,255,.07); border: none;
+      color: #94A3B8; font-size: .82rem; cursor: pointer;
+      transition: .18s; margin-bottom: 12px;
+    }
+    .refresh-btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+
+    /* ── Main content ────────────────────────────────────── */
+    .main {
+      margin-left: 240px;
+      padding: 32px 32px 60px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ──────────────────────────────────────────── */
+    .page-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .page-title { font-size: 1.5rem; font-weight: 700; margin: 0; }
+    .month-badge {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 20px; padding: 6px 18px;
+      font-size: .85rem; font-weight: 600; color: var(--muted);
+    }
+    .status-dot {
+      display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; background: var(--income);
+      margin-right: 6px; animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity:1 } 50% { opacity:.4 }
+    }
+
+    /* ── Stat cards ──────────────────────────────────────── */
+    .stat-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px 24px;
+      position: relative; overflow: hidden;
+    }
+    .stat-card .icon-bg {
+      position: absolute; right: -10px; top: -10px;
+      width: 72px; height: 72px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem; opacity: .12;
+    }
+    .stat-card .label {
+      font-size: .78rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: var(--muted); margin-bottom: 8px;
+    }
+    .stat-card .value {
+      font-size: 1.55rem; font-weight: 800;
+      line-height: 1.1; margin-bottom: 6px;
+    }
+    .stat-card .sub { font-size: .78rem; color: var(--muted); }
+
+    .card-income  { border-top: 3px solid var(--income);  }
+    .card-fixed   { border-top: 3px solid var(--fixed);   }
+    .card-expense { border-top: 3px solid var(--expense); }
+    .card-balance  { border-top: 3px solid var(--balance);  }
+    .card-savings  { border-top: 3px solid var(--savings);  }
+    .card-income  .value { color: var(--income);  }
+    .card-fixed   .value { color: var(--fixed);   }
+    .card-expense .value { color: var(--expense); }
+    .card-savings .value { color: var(--savings); }
+    .card-balance .value { color: var(--balance); }
+
+    /* ── Chart cards ─────────────────────────────────────── */
+    .chart-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px;
+    }
+    .chart-card h6 {
+      font-size: .8rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: var(--muted); margin-bottom: 18px;
+    }
+    .chart-wrap { position: relative; }
+
+    /* ── Transactions table ──────────────────────────────── */
+    .table-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .table-card .table-header {
+      padding: 20px 24px 14px;
+      display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--border);
+    }
+    .table-card .table-header h6 {
+      font-size: .8rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: var(--muted); margin: 0;
+    }
+    .table-card table { width: 100%; border-collapse: collapse; }
+    .table-card th {
+      font-size: .72rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .05em;
+      color: var(--muted); padding: 10px 24px;
+      background: #F8FAFC; border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    .table-card td {
+      padding: 12px 24px; font-size: .875rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .table-card tr:last-child td { border-bottom: none; }
+    .table-card tr:hover td { background: #F8FAFC; }
+    .cat-badge {
+      display: inline-block;
+      padding: 3px 10px; border-radius: 20px;
+      font-size: .72rem; font-weight: 600;
+      text-transform: capitalize;
+    }
+    .amount-cell { font-weight: 600; color: var(--expense); }
+
+    /* ── History section ─────────────────────────────────── */
+    .history-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px 24px;
+      cursor: pointer;
+      transition: .18s;
+      border-left: 4px solid transparent;
+    }
+    .history-card:hover { transform: translateY(-2px); }
+    .history-card.active-month { border-left-color: var(--income); }
+    .history-card.closed-month { border-left-color: var(--border); }
+    .history-card .hc-month {
+      font-size: .95rem; font-weight: 700; margin-bottom: 10px;
+    }
+    .history-card .hc-row {
+      display: flex; justify-content: space-between;
+      font-size: .8rem; color: var(--muted); margin-bottom: 4px;
+    }
+    .history-card .hc-row span:last-child { font-weight: 600; color: var(--text); }
+    .progress-bar-wrap {
+      height: 6px; background: var(--border); border-radius: 3px;
+      margin-top: 10px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; border-radius: 3px;
+      transition: width .4s ease;
+    }
+
+    /* ── Empty state ─────────────────────────────────────── */
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: var(--muted);
+    }
+    .empty-state i { font-size: 3rem; margin-bottom: 16px; opacity: .3; }
+    .empty-state p { font-size: .95rem; margin: 0; }
+
+    /* ── Section divider ─────────────────────────────────── */
+    .section-title {
+      font-size: .78rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: var(--muted); margin-bottom: 16px; margin-top: 32px;
+    }
+
+    /* ── Tabs ────────────────────────────────────────────── */
+    .view-tabs {
+      display: flex; gap: 4px;
+      background: var(--border); border-radius: 10px;
+      padding: 4px;
+    }
+    .view-tab {
+      padding: 7px 20px; border-radius: 8px;
+      font-size: .82rem; font-weight: 600;
+      cursor: pointer; border: none; background: transparent;
+      color: var(--muted); transition: .15s;
+    }
+    .view-tab.active {
+      background: #fff; color: var(--text);
+      box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    }
+
+    /* ── Responsive ──────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .sidebar { display: none; }
+      .main { margin-left: 0; padding: 20px 16px 60px; }
+    }
+
+    /* ── Dark theme ──────────────────────────────────────── */
+    [data-theme="dark"] {
+      --bg:     #0F172A;
+      --card:   #1E293B;
+      --text:   #E2E8F0;
+      --muted:  #94A3B8;
+      --border: #334155;
+      --shadow: 0 1px 3px rgba(0,0,0,.25), 0 4px 16px rgba(0,0,0,.25);
+    }
+    [data-theme="dark"] body { background: var(--bg); color: var(--text); }
+    [data-theme="dark"] .table-card th { background: #1a2535; }
+    [data-theme="dark"] .table-card tr:hover td { background: #253244; }
+    [data-theme="dark"] .view-tabs { background: #253244; }
+    [data-theme="dark"] .view-tab.active { background: #334155; color: var(--text); box-shadow: none; }
+    [data-theme="dark"] .month-badge { background: var(--card); border-color: var(--border); }
+    [data-theme="dark"] .section-title { color: var(--muted); }
+    [data-theme="dark"] .desc-input { background: #253244; border-color: var(--border); color: var(--text); }
+    [data-theme="dark"] #fixed-costs-card { background: var(--card); }
+    [data-theme="dark"] #fixed-costs-card > div > div { background: rgba(245,158,11,.04) !important; }
+
+    /* ── Clickable pie legend ────────────────────────────── */
+    .legend-item {
+      cursor: pointer; border-radius: 7px; padding: 4px 6px;
+      transition: background .15s; margin-bottom: 2px;
+    }
+    .legend-item:hover { background: var(--bg); }
+    .legend-item.legend-active {
+      background: rgba(59,130,246,.1);
+      outline: 1px solid rgba(59,130,246,.25);
+    }
+    [data-theme="dark"] .legend-item:hover { background: #253244; }
+    [data-theme="dark"] .legend-item.legend-active { background: rgba(59,130,246,.15); }
+
+    /* ── Expense action buttons ───────────────────────────── */
+    .action-btn {
+      background: transparent; border: 1px solid var(--border);
+      border-radius: 6px; padding: 3px 8px; font-size: .7rem;
+      cursor: pointer; transition: .15s; color: var(--muted);
+      margin-left: 3px; line-height: 1.4;
+    }
+    .action-btn:hover { background: var(--bg); }
+    .del-btn:hover { border-color: #EF4444; color: #EF4444; }
+    .edit-btn:hover { border-color: var(--primary); color: var(--primary); }
+    .desc-input {
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 3px 8px; font-size: .82rem;
+      background: var(--bg); color: var(--text);
+      width: 100%; outline: none; font-family: inherit;
+    }
+    .desc-input:focus { border-color: var(--primary); }
+
+    /* ── Reports ─────────────────────────────────────────── */
+    .report-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 20px 24px;
+      cursor: pointer;
+      transition: .18s;
+      border-left: 4px solid var(--primary);
+    }
+    .report-card:hover { transform: translateY(-2px); box-shadow: 0 4px 24px rgba(0,0,0,.12); }
+    .cat-bar {
+      height: 8px; border-radius: 4px;
+      background: var(--border); overflow: hidden; margin-top: 4px;
+    }
+    .cat-bar-fill { height: 100%; border-radius: 4px; transition: width .4s; }
+
+    /* ── Toast ───────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: #1E293B; color: #fff;
+      padding: 12px 20px; border-radius: 10px;
+      font-size: .85rem; font-weight: 500;
+      display: none; z-index: 9999;
+      box-shadow: 0 4px 20px rgba(0,0,0,.18);
+    }
+
+    /* ── Undo FAB ────────────────────────────────────────── */
+    #undo-fab {
+      position: fixed; bottom: 80px; right: 28px;
+      z-index: 8888;
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 20px;
+      background: #EF4444; color: #fff;
+      border: none; border-radius: 50px;
+      font-size: .85rem; font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(239,68,68,.45);
+      transition: transform .15s, box-shadow .15s;
+    }
+    #undo-fab:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 28px rgba(239,68,68,.55);
+    }
+    #undo-fab:active { transform: translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- ── Sidebar ─────────────────────────────────────────────────── -->
+<nav class="sidebar">
+  <div class="brand">
+    <i class="fa-solid fa-wallet"></i>
+    Expense Tracker
+  </div>
+
+  <a class="nav-item active" onclick="showView('current')">
+    <i class="fa-solid fa-gauge-high"></i> Dashboard
+  </a>
+  <a class="nav-item" onclick="showView('history')">
+    <i class="fa-solid fa-clock-rotate-left"></i> History
+  </a>
+  <a class="nav-item" onclick="showView('reports')">
+    <i class="fa-solid fa-file-invoice-dollar"></i> Reports
+  </a>
+
+  <div class="sidebar-footer">
+    <button class="refresh-btn" onclick="toggleTheme()">
+      <i class="fa-solid fa-moon me-1" id="theme-icon"></i>
+      <span id="theme-label">Dark Mode</span>
+    </button>
+    <button class="refresh-btn" onclick="refreshAll()">
+      <i class="fa-solid fa-rotate-right me-1"></i> Refresh Data
+    </button>
+    <button class="refresh-btn" onclick="location.href='/logout'" style="margin-bottom:10px">
+      <i class="fa-solid fa-right-from-bracket me-1"></i> Logout
+    </button>
+    <div id="last-updated">—</div>
+  </div>
+</nav>
+
+<!-- ── Main ────────────────────────────────────────────────────── -->
+<main class="main">
+
+  <!-- Current month view -->
+  <div id="view-current">
+    <div class="page-header">
+      <div>
+        <p class="section-title" style="margin-top:0">Dashboard</p>
+        <h1 class="page-title" id="header-month">Loading…</h1>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button onclick="showUndoModal()" style="display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;border:1.5px solid #EF4444;background:rgba(239,68,68,.07);color:#EF4444;font-size:.82rem;font-weight:600;cursor:pointer;transition:.18s" onmouseover="this.style.background='rgba(239,68,68,.15)'" onmouseout="this.style.background='rgba(239,68,68,.07)'">
+          <i class="fa-solid fa-rotate-left"></i> Undo Last Action
+        </button>
+        <span class="month-badge">
+          <span class="status-dot" id="status-dot"></span>
+          <span id="header-status">—</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- Stat cards -->
+    <div class="row g-3 mb-4" id="stat-cards">
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card card-income">
+          <div class="icon-bg" style="background:var(--income)"><i class="fa-solid fa-arrow-down-to-line"></i></div>
+          <div class="label">Salary / Income</div>
+          <div class="value" id="stat-salary">—</div>
+          <div class="sub">This month</div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card card-fixed">
+          <div class="icon-bg" style="background:var(--fixed)"><i class="fa-solid fa-lock"></i></div>
+          <div class="label">Fixed Costs</div>
+          <div class="value" id="stat-fixed">—</div>
+          <div class="sub">Rent · Etisalat · Auto Loan</div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card card-expense">
+          <div class="icon-bg" style="background:var(--expense)"><i class="fa-solid fa-cart-shopping"></i></div>
+          <div class="label">Variable Expenses</div>
+          <div class="value" id="stat-var">—</div>
+          <div class="sub" id="stat-var-sub">—</div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card card-savings">
+          <div class="icon-bg" style="background:var(--savings)"><i class="fa-solid fa-piggy-bank"></i></div>
+          <div class="label">Savings</div>
+          <div class="value" id="stat-savings">—</div>
+          <div class="sub" id="stat-savings-sub">Set aside this month</div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card card-balance">
+          <div class="icon-bg" style="background:var(--balance)"><i class="fa-solid fa-wallet"></i></div>
+          <div class="label">Balance</div>
+          <div class="value" id="stat-balance">—</div>
+          <div class="sub" id="stat-balance-pct">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="row g-3 mb-4">
+      <div class="col-lg-5">
+        <div class="chart-card h-100">
+          <h6><i class="fa-solid fa-chart-pie me-2"></i>Expense Breakdown</h6>
+          <div class="chart-wrap" style="max-height:280px">
+            <canvas id="pieChart"></canvas>
+          </div>
+          <div id="pie-legend" class="mt-3"></div>
+        </div>
+      </div>
+      <div class="col-lg-7">
+        <div class="chart-card h-100">
+          <h6><i class="fa-solid fa-chart-bar me-2"></i>Monthly Overview</h6>
+          <div class="chart-wrap" style="height:300px">
+            <canvas id="barChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fixed Costs strip -->
+    <div class="chart-card mb-3" id="fixed-costs-card">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="m-0"><i class="fa-solid fa-lock me-2" style="color:var(--fixed)"></i>Fixed Costs</h6>
+        <span style="font-weight:700;color:var(--fixed);font-size:.9rem" id="fc-total-label">—</span>
+      </div>
+      <div id="fixed-costs-pills" class="d-flex gap-2 flex-wrap"></div>
+    </div>
+
+    <!-- Variable Expenses table -->
+    <div class="table-card">
+      <div class="table-header">
+        <h6><i class="fa-solid fa-list me-2"></i>Expenses</h6>
+        <button id="reclassify-btn" class="action-btn" style="font-size:.75rem;padding:5px 12px;border-radius:8px" onclick="reclassifyAll(this)">
+          <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Fix Categories
+        </button>
+      </div>
+      <div id="transactions-wrap">
+        <div class="empty-state">
+          <i class="fa-solid fa-receipt"></i>
+          <p>No expenses yet — add via Telegram.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- History view -->
+  <div id="view-history" style="display:none">
+    <div class="page-header">
+      <div>
+        <p class="section-title" style="margin-top:0">History</p>
+        <h1 class="page-title">Past Months</h1>
+      </div>
+    </div>
+    <div id="history-grid" class="row g-3"></div>
+
+    <!-- Drill-down detail -->
+    <div id="history-detail" style="display:none; margin-top:28px">
+      <div class="page-header" style="margin-bottom:16px">
+        <h5 id="detail-title" style="margin:0;font-weight:700">Detail</h5>
+        <button class="btn btn-sm btn-outline-secondary" onclick="closeDetail()">
+          <i class="fa-solid fa-xmark"></i> Close
+        </button>
+      </div>
+      <div class="row g-3 mb-4" id="detail-stats"></div>
+      <div class="row g-3 mb-3">
+        <div class="col-md-5">
+          <div class="chart-card">
+            <h6>Expense Breakdown</h6>
+            <canvas id="detailPie" style="max-height:240px"></canvas>
+          </div>
+        </div>
+        <div class="col-md-7">
+          <div class="table-card">
+            <div class="table-header"><h6>Transactions</h6></div>
+            <div id="detail-transactions"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reports view -->
+  <div id="view-reports" style="display:none">
+    <div class="page-header">
+      <div>
+        <p class="section-title" style="margin-top:0">Reports</p>
+        <h1 class="page-title">Monthly Statements</h1>
+      </div>
+    </div>
+    <div id="reports-grid" class="row g-3 mb-4"></div>
+
+    <!-- Report detail -->
+    <div id="report-detail" style="display:none; margin-top:8px">
+      <div class="page-header" style="margin-bottom:16px">
+        <h5 id="rpt-title" style="margin:0;font-weight:700">Statement</h5>
+        <div class="d-flex gap-2">
+          <button class="btn btn-sm" style="background:#14B8A6;color:#fff;border:none" onclick="downloadReportPDF()">
+            <i class="fa-solid fa-file-pdf me-1"></i> Download PDF
+          </button>
+          <button class="btn btn-sm btn-outline-secondary" onclick="closeReportDetail()">
+            <i class="fa-solid fa-xmark"></i> Close
+          </button>
+        </div>
+      </div>
+      <div class="row g-3 mb-4" id="rpt-stats"></div>
+      <div class="row g-3 mb-4">
+        <div class="col-md-5">
+          <div class="chart-card">
+            <h6><i class="fa-solid fa-chart-pie me-2"></i>Expense Breakdown</h6>
+            <div class="chart-wrap" style="max-height:260px">
+              <canvas id="rptPie"></canvas>
+            </div>
+            <div id="rpt-pie-legend" class="mt-3"></div>
+          </div>
+        </div>
+        <div class="col-md-7">
+          <div class="chart-card">
+            <h6><i class="fa-solid fa-bars-progress me-2"></i>Category Breakdown</h6>
+            <div id="rpt-categories"></div>
+          </div>
+        </div>
+      </div>
+      <div class="table-card">
+        <div class="table-header">
+          <h6><i class="fa-solid fa-list me-2"></i>All Transactions</h6>
+        </div>
+        <div id="rpt-transactions"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<button id="undo-fab" onclick="showUndoModal()">
+  <i class="fa-solid fa-rotate-left"></i> Undo
+</button>
+
+<div id="toast"></div>
+
+<!-- Undo confirmation modal -->
+<div id="undo-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center" onclick="if(event.target===this)closeUndoModal()">
+  <div style="background:var(--card);border-radius:16px;padding:28px 32px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <div style="width:40px;height:40px;border-radius:50%;background:rgba(239,68,68,.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <i class="fa-solid fa-rotate-left" style="color:#EF4444;font-size:1rem"></i>
+      </div>
+      <div>
+        <div style="font-weight:700;font-size:1rem;color:var(--text)">Undo Last Action</div>
+        <div style="font-size:.8rem;color:var(--muted)">This cannot be redone</div>
+      </div>
+    </div>
+    <div id="undo-preview" style="background:var(--bg);border-radius:10px;padding:12px 16px;font-size:.85rem;color:var(--muted);margin-bottom:20px;min-height:42px">
+      Loading…
+    </div>
+    <div style="display:flex;gap:10px">
+      <button onclick="closeUndoModal()" style="flex:1;padding:10px;border-radius:10px;border:1px solid var(--border);background:transparent;color:var(--text);font-weight:600;cursor:pointer;font-size:.85rem">Cancel</button>
+      <button id="undo-confirm-btn" onclick="confirmUndo()" style="flex:1;padding:10px;border-radius:10px;border:none;background:#EF4444;color:#fff;font-weight:600;cursor:pointer;font-size:.85rem">Undo</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Globals ─────────────────────────────────────────────────────────────────
+let currentData = null;
+let allMonths   = [];
+let pieChart    = null;
+let barChart    = null;
+let detailPie   = null;
+let allTransactions = [];
+const AED = n => 'AED ' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
+
+const CATEGORY_PALETTE = [
+  '#EF4444','#F97316','#F59E0B','#10B981',
+  '#3B82F6','#8B5CF6','#EC4899','#06B6D4',
+  '#84CC16','#6B7280','#14B8A6','#F43F5E',
+];
+const CATEGORY_ICONS = {
+  food:'utensils', petrol:'gas-pump', fuel:'gas-pump', groceries:'basket-shopping',
+  shopping:'bag-shopping', transport:'bus', entertainment:'film', health:'heart-pulse',
+  utilities:'bolt', education:'graduation-cap', rent:'house', etisalat:'mobile-screen',
+  'auto loan':'car', other:'ellipsis',
+};
+const catIcon = c => CATEGORY_ICONS[c.toLowerCase()] || 'tag';
+
+function catColor(cat, index) {
+  const fixed = { rent:'#F59E0B', etisalat:'#F97316', 'auto loan':'#EF4444' };
+  if (fixed[cat.toLowerCase()]) return fixed[cat.toLowerCase()];
+  return CATEGORY_PALETTE[index % CATEGORY_PALETTE.length];
+}
+
+// ── Fetch helpers ────────────────────────────────────────────────────────────
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (r.status === 401) { location.href = '/login'; return {}; }
+  return r.json();
+}
+
+async function refreshAll() {
+  await Promise.all([loadCurrent(), loadHistory()]);
+  document.getElementById('last-updated').textContent =
+    'Updated ' + new Date().toLocaleTimeString();
+  toast('Data refreshed');
+}
+
+async function loadCurrent() {
+  const data = await fetchJSON('/api/current');
+  if (data.error) {
+    renderEmpty();
+    return;
+  }
+  currentData = data;
+  renderCurrent(data);
+}
+
+async function loadHistory() {
+  allMonths = await fetchJSON('/api/months');
+  renderHistoryGrid(allMonths);
+  renderBarChart(allMonths);
+}
+
+// ── Render current month ─────────────────────────────────────────────────────
+function renderCurrent(d) {
+  const m = d.month;
+  document.getElementById('header-month').textContent = `${m.name} ${m.year}`;
+  const isActive = m.status === 'active';
+  document.getElementById('header-status').textContent = isActive ? 'Active' : 'Closed';
+  document.getElementById('status-dot').style.background = isActive ? 'var(--income)' : 'var(--muted)';
+
+  document.getElementById('stat-salary').textContent   = AED(m.salary);
+  document.getElementById('stat-fixed').textContent    = AED(d.fixed_total);
+  document.getElementById('stat-var').textContent      = AED(d.var_total);
+  document.getElementById('stat-savings').textContent  = AED(d.savings_total || 0);
+  document.getElementById('stat-balance').textContent  = AED(d.balance);
+
+  const catCount = Object.keys(d.expenses_by_category).length;
+  document.getElementById('stat-var-sub').textContent =
+    catCount ? `${catCount} categor${catCount > 1 ? 'ies' : 'y'}` : 'No expenses yet';
+  const savPct = m.salary > 0 ? ((d.savings_total || 0) / m.salary * 100).toFixed(1) : 0;
+  document.getElementById('stat-savings-sub').textContent =
+    (d.savings_total || 0) > 0 ? `${savPct}% of salary` : 'None set aside yet';
+  document.getElementById('stat-balance-pct').textContent =
+    `${d.balance_pct}% remaining`;
+
+  renderPieChart(d);
+  renderFixedCosts(d);
+  renderTransactions(d);
+}
+
+function renderEmpty() {
+  document.getElementById('header-month').textContent = 'No Active Month';
+  document.getElementById('header-status').textContent = 'Inactive';
+  ['stat-salary','stat-fixed','stat-var','stat-savings','stat-balance'].forEach(id => {
+    document.getElementById(id).textContent = 'AED 0.00';
+  });
+  document.getElementById('transactions-wrap').innerHTML = `
+    <div class="empty-state">
+      <i class="fa-solid fa-wallet"></i>
+      <p>Send <strong>+Salary 15000</strong> to your Telegram bot to get started.</p>
+    </div>`;
+}
+
+// ── Category filter ──────────────────────────────────────────────────────────
+let catFilter = null;
+
+function filterByCategory(rawCat) {
+  catFilter = catFilter === rawCat ? null : rawCat;
+  document.querySelectorAll('.legend-item').forEach(el =>
+    el.classList.toggle('legend-active', el.dataset.cat === catFilter)
+  );
+  if (currentData) renderTransactions(currentData);
+  if (catFilter) {
+    const tbl = document.querySelector('#view-current .table-card');
+    if (tbl) tbl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
+
+function clearCatFilter() {
+  catFilter = null;
+  document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('legend-active'));
+  if (currentData) renderTransactions(currentData);
+}
+
+// ── Pie chart ────────────────────────────────────────────────────────────────
+function renderPieChart(d) {
+  const labels = [], values = [], colors = [], cats = [];
+  let idx = 0;
+
+  Object.entries(d.expenses_by_category).forEach(([cat, total]) => {
+    labels.push(cat.charAt(0).toUpperCase() + cat.slice(1));
+    cats.push(cat.toLowerCase());
+    values.push(total);
+    colors.push(catColor(cat, idx++));
+  });
+
+  if (!values.length) {
+    document.getElementById('pie-legend').innerHTML = '<p class="text-muted small text-center">No data yet</p>';
+    return;
+  }
+
+  if (pieChart) pieChart.destroy();
+  pieChart = new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }] },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      cutout: '62%',
+      onClick: (e, elements) => {
+        if (elements.length > 0) filterByCategory(cats[elements[0].index]);
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${AED(ctx.raw)}` } }
+      }
+    }
+  });
+
+  document.getElementById('pie-legend').innerHTML = labels.map((l, i) => `
+    <div class="legend-item d-flex justify-content-between align-items-center"
+         data-cat="${cats[i]}" onclick="filterByCategory('${cats[i]}')">
+      <div class="d-flex align-items-center gap-2">
+        <div style="width:10px;height:10px;border-radius:2px;background:${colors[i]};flex-shrink:0"></div>
+        <span style="font-size:.8rem">${l}</span>
+      </div>
+      <span style="font-size:.8rem;font-weight:600">${AED(values[i])}</span>
+    </div>`).join('');
+}
+
+// ── Bar chart (monthly history) ──────────────────────────────────────────────
+function renderBarChart(months) {
+  const labels     = months.map(m => `${m.name.slice(0,3)} ${m.year}`).reverse();
+  const salaries   = months.map(m => m.salary).reverse();
+  const spent      = months.map(m => m.fixed_total + m.var_total).reverse();
+  const savingsArr = months.map(m => m.savings_total || 0).reverse();
+  const balances   = months.map(m => m.balance).reverse();
+
+  if (barChart) barChart.destroy();
+  barChart = new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Salary',    data: salaries,   backgroundColor: 'rgba(16,185,129,.8)',  borderRadius: 4 },
+        { label: 'Expenses',  data: spent,      backgroundColor: 'rgba(239,68,68,.8)',   borderRadius: 4 },
+        { label: 'Savings',   data: savingsArr, backgroundColor: 'rgba(20,184,166,.8)',  borderRadius: 4 },
+        { label: 'Balance',   data: balances,   backgroundColor: 'rgba(99,102,241,.8)',  borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${AED(ctx.raw)}` } }
+      },
+      scales: {
+        x: { grid: { display: false } },
+        y: {
+          ticks: { callback: v => 'AED ' + (v/1000).toFixed(0) + 'k' },
+          grid: { color: '#F0F4F8' }
+        }
+      }
+    }
+  });
+}
+
+// ── Fixed costs strip ────────────────────────────────────────────────────────
+function renderFixedCosts(d) {
+  const pills = document.getElementById('fixed-costs-pills');
+  const label = document.getElementById('fc-total-label');
+  if (!d || !d.fixed_costs.length) {
+    if (pills) pills.innerHTML = '<span style="color:var(--muted);font-size:.82rem">None recorded</span>';
+    return;
+  }
+  if (label) label.textContent = AED(d.fixed_total);
+  if (pills) pills.innerHTML = d.fixed_costs.map(fc => `
+    <div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:10px 18px;display:flex;align-items:center;gap:10px;min-width:130px">
+      <i class="fa-solid fa-lock" style="color:var(--fixed);font-size:.8rem"></i>
+      <div>
+        <div style="font-size:.76rem;font-weight:700;color:var(--text)">${fc.name}</div>
+        <div style="font-size:.85rem;font-weight:600;color:var(--fixed)">${AED(fc.amount)}</div>
+      </div>
+    </div>`).join('');
+}
+
+// ── Expenses table ───────────────────────────────────────────────────────────
+function renderTransactions(d) {
+  const wrap = document.getElementById('transactions-wrap');
+  allTransactions = [];
+
+  d.expenses.slice().reverse().forEach(e => {
+    allTransactions.push({ id:e.id, date:e.expense_date, category:e.category, amount:e.amount, description:e.description||'' });
+  });
+
+  const rows = catFilter
+    ? allTransactions.filter(t => t.category.toLowerCase() === catFilter)
+    : allTransactions;
+
+  const filterBar = catFilter ? `
+    <div style="padding:9px 20px;background:rgba(59,130,246,.07);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:.82rem;color:var(--text)">
+        <i class="fa-solid fa-filter me-2" style="color:var(--primary);font-size:.75rem"></i>
+        <strong>${catFilter.charAt(0).toUpperCase()+catFilter.slice(1)}</strong>
+        &nbsp;·&nbsp; ${rows.length} transaction${rows.length!==1?'s':''}
+      </span>
+      <button onclick="clearCatFilter()" style="background:none;border:none;color:var(--primary);font-size:.8rem;font-weight:600;cursor:pointer;padding:0">
+        Show all &times;
+      </button>
+    </div>` : '';
+
+  if (!rows.length) {
+    wrap.innerHTML = filterBar + `<div class="empty-state"><i class="fa-solid fa-receipt"></i><p>${catFilter ? 'No '+catFilter.charAt(0).toUpperCase()+catFilter.slice(1)+' transactions recorded.' : 'No expenses yet — add via Telegram.'}</p></div>`;
+    return;
+  }
+
+  const tbody = rows.map(t => {
+    const icon = catIcon(t.category);
+    const isSav = t.category.toLowerCase() === 'savings';
+    const color   = isSav ? '#14B8A6' : '#EF4444';
+    const bgColor = isSav ? 'rgba(20,184,166,.1)' : 'rgba(239,68,68,.1)';
+    const safeDesc = (t.description||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    return `<tr>
+      <td style="color:var(--muted);font-size:.8rem">${t.date}</td>
+      <td><span class="cat-badge" style="background:${bgColor};color:${color}">
+        <i class="fa-solid fa-${icon} me-1" style="font-size:.65rem"></i>
+        ${t.category.charAt(0).toUpperCase()+t.category.slice(1)}
+      </span></td>
+      <td class="amount-cell" style="color:${color}">${AED(t.amount)}</td>
+      <td class="desc-cell" style="color:var(--muted);font-size:.82rem;min-width:120px">${t.description||'—'}</td>
+      <td style="white-space:nowrap;text-align:right;padding-right:14px">
+        <button class="action-btn edit-btn" onclick="startEditDesc(this,${t.id},'${safeDesc}')" title="Edit description"><i class="fa-solid fa-pen"></i></button>
+        <button class="action-btn del-btn" onclick="deleteExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = filterBar + `
+    <table>
+      <thead><tr>
+        <th>Date</th><th>Category</th><th>Amount</th><th>Description</th><th></th>
+      </tr></thead>
+      <tbody>${tbody}</tbody>
+    </table>`;
+}
+
+// ── Undo ─────────────────────────────────────────────────────────────────────
+async function showUndoModal() {
+  const modal = document.getElementById('undo-modal');
+  const preview = document.getElementById('undo-preview');
+  const confirmBtn = document.getElementById('undo-confirm-btn');
+  modal.style.display = 'flex';
+  preview.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>Loading…';
+  confirmBtn.disabled = true;
+
+  // Always fetch fresh data from server
+  let d;
+  try {
+    d = await fetchJSON('/api/current');
+  } catch(e) {
+    preview.textContent = 'Could not load current data.';
+    return;
+  }
+
+  if (!d || d.error || !d.month) {
+    preview.textContent = 'No active month — nothing to undo.';
+    return;
+  }
+
+  const exps = d.expenses || [];
+  if (exps.length > 0) {
+    const last = exps[exps.length - 1];
+    const cat  = last.category.charAt(0).toUpperCase() + last.category.slice(1);
+    const amt  = AED(last.amount);
+    preview.innerHTML =
+      `<strong>Delete last expense:</strong><br>` +
+      `${cat} — ${amt}` +
+      (last.description ? `<br><span style="color:var(--muted);font-size:.8rem">${last.description}</span>` : '') +
+      `<br><span style="color:var(--muted);font-size:.78rem">${last.expense_date || ''}</span>`;
+  } else {
+    const sal = AED(d.month.salary);
+    preview.innerHTML =
+      `<strong>Undo salary entry:</strong><br>` +
+      `${d.month.name} ${d.month.year} — ${sal}<br>` +
+      `<span style="color:var(--muted);font-size:.8rem">This month will be removed and the previous month restored.</span>`;
+  }
+
+  confirmBtn.disabled = false;
+}
+
+function closeUndoModal() {
+  document.getElementById('undo-modal').style.display = 'none';
+}
+
+async function confirmUndo() {
+  const btn = document.getElementById('undo-confirm-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+
+  const r = await fetch('/api/undo', { method: 'POST' });
+  if (r.status === 401) { location.href = '/login'; return; }
+  const data = await r.json();
+
+  closeUndoModal();
+  await refreshAll();
+  toast(data.message || 'Undone');
+  btn.disabled = false;
+  btn.innerHTML = 'Undo';
+}
+
+// ── Reclassify ───────────────────────────────────────────────────────────────
+async function reclassifyAll(btn) {
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Fixing…';
+  const r = await fetch('/api/reclassify', { method: 'POST' });
+  if (r.status === 401) { location.href = '/login'; return; }
+  const data = await r.json();
+  await refreshAll();
+  toast(`Fixed ${data.fixed} expense${data.fixed !== 1 ? 's' : ''}`);
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles me-1"></i>Fix Categories';
+}
+
+// ── History grid ─────────────────────────────────────────────────────────────
+function renderHistoryGrid(months) {
+  const grid = document.getElementById('history-grid');
+  if (!months.length) {
+    grid.innerHTML = `<div class="col-12"><div class="empty-state"><i class="fa-solid fa-clock-rotate-left"></i><p>No history yet</p></div></div>`;
+    return;
+  }
+
+  grid.innerHTML = months.map(m => {
+    const totalOut = m.fixed_total + m.var_total + (m.savings_total || 0);
+    const spentPct = m.salary > 0 ? Math.min(100, (totalOut / m.salary * 100)) : 0;
+    const barColor = spentPct > 90 ? 'var(--expense)' : spentPct > 70 ? 'var(--fixed)' : 'var(--income)';
+    const isActive = m.status === 'active';
+    return `
+      <div class="col-sm-6 col-lg-4">
+        <div class="history-card ${isActive ? 'active-month' : 'closed-month'}" onclick="openDetail(${m.id})">
+          <div class="hc-month">
+            ${isActive ? '<span style="color:var(--income);font-size:.7rem;font-weight:700;margin-right:6px">● ACTIVE</span>' : ''}
+            ${m.name} ${m.year}
+          </div>
+          <div class="hc-row"><span>Salary</span><span>${AED(m.salary)}</span></div>
+          <div class="hc-row"><span>Fixed</span><span>${AED(m.fixed_total)}</span></div>
+          <div class="hc-row"><span>Variable</span><span>${AED(m.var_total)}</span></div>
+          <div class="hc-row"><span>Savings</span>
+            <span style="color:var(--savings)">${AED(m.savings_total || 0)}</span>
+          </div>
+          <div class="hc-row"><span>Balance</span>
+            <span style="color:${m.balance >= 0 ? 'var(--income)' : 'var(--expense)'}">${AED(m.balance)}</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar-fill" style="width:${spentPct}%;background:${barColor}"></div>
+          </div>
+          <div style="font-size:.7rem;color:var(--muted);margin-top:5px;text-align:right">${spentPct.toFixed(0)}% out</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── History detail drill-down ────────────────────────────────────────────────
+async function openDetail(monthId) {
+  const d = await fetchJSON(`/api/month/${monthId}`);
+  const m = d.month;
+  document.getElementById('detail-title').textContent = `${m.name} ${m.year}`;
+  document.getElementById('history-detail').style.display = 'block';
+
+  // Stats
+  document.getElementById('detail-stats').innerHTML = `
+    <div class="col-6 col-md">
+      <div class="stat-card card-income" style="padding:16px 18px">
+        <div class="label">Salary</div>
+        <div class="value" style="font-size:1.1rem">${AED(m.salary)}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="stat-card card-fixed" style="padding:16px 18px">
+        <div class="label">Fixed</div>
+        <div class="value" style="font-size:1.1rem">${AED(d.fixed_total)}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="stat-card card-expense" style="padding:16px 18px">
+        <div class="label">Variable</div>
+        <div class="value" style="font-size:1.1rem">${AED(d.var_total)}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="stat-card card-savings" style="padding:16px 18px">
+        <div class="label">Savings</div>
+        <div class="value" style="font-size:1.1rem">${AED(d.savings_total || 0)}</div>
+      </div>
+    </div>
+    <div class="col-6 col-md">
+      <div class="stat-card card-balance" style="padding:16px 18px">
+        <div class="label">Balance</div>
+        <div class="value" style="font-size:1.1rem">${AED(d.balance)}</div>
+      </div>
+    </div>`;
+
+  // Pie
+  const labels = [], values = [], colors = [];
+  Object.entries(d.expenses_by_category).forEach(([c,v],i) => {
+    labels.push(c.charAt(0).toUpperCase()+c.slice(1));
+    values.push(v);
+    colors.push(catColor(c, i));
+  });
+  if (detailPie) detailPie.destroy();
+  detailPie = new Chart(document.getElementById('detailPie'), {
+    type:'doughnut',
+    data:{ labels, datasets:[{ data:values, backgroundColor:colors, borderWidth:2, borderColor:'#fff' }] },
+    options:{ responsive:true, cutout:'60%', plugins:{ legend:{ position:'bottom', labels:{ boxWidth:10, font:{size:10} } }, tooltip:{ callbacks:{ label: ctx=>` ${ctx.label}: ${AED(ctx.raw)}` } } } }
+  });
+
+  // Transactions
+  const allTx = [
+    ...d.fixed_costs.map(fc => ({ type:'fixed', date:'—', category:fc.name, amount:fc.amount, description:'Fixed cost' })),
+    ...d.expenses.slice().reverse().map(e => ({ type:'variable', date:e.expense_date, category:e.category, amount:e.amount, description:e.description||'' }))
+  ];
+  const tbody = allTx.map(t => {
+    const color = t.type==='fixed' ? '#F59E0B' : '#EF4444';
+    const bg    = t.type==='fixed' ? 'rgba(245,158,11,.1)' : 'rgba(239,68,68,.1)';
+    return `<tr>
+      <td style="font-size:.78rem;color:var(--muted)">${t.date}</td>
+      <td><span class="cat-badge" style="background:${bg};color:${color}">${t.category.charAt(0).toUpperCase()+t.category.slice(1)}</span></td>
+      <td style="font-weight:600;color:${color}">${AED(t.amount)}</td>
+      <td style="font-size:.78rem;color:var(--muted)">${t.description||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('detail-transactions').innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:8px 16px;background:#F8FAFC;text-align:left">Date</th>
+        <th style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:8px 16px;background:#F8FAFC;text-align:left">Category</th>
+        <th style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:8px 16px;background:#F8FAFC;text-align:left">Amount</th>
+        <th style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:8px 16px;background:#F8FAFC;text-align:left">Description</th>
+      </tr></thead>
+      <tbody>${tbody}</tbody>
+    </table>`;
+
+  document.getElementById('history-detail').scrollIntoView({ behavior:'smooth' });
+}
+
+function closeDetail() {
+  document.getElementById('history-detail').style.display = 'none';
+}
+
+// ── Expense actions ──────────────────────────────────────────────────────────
+async function deleteExpense(expenseId) {
+  if (!confirm('Delete this expense?')) return;
+  const r = await fetch(`/api/expense/${expenseId}`, { method: 'DELETE' });
+  if (r.status === 401) { location.href = '/login'; return; }
+  await loadCurrent();
+  toast('Expense deleted');
+}
+
+function startEditDesc(btn, expenseId, currentDesc) {
+  const row = btn.closest('tr');
+  const cell = row.querySelector('.desc-cell');
+  const cur = currentDesc === '—' ? '' : currentDesc;
+  cell.innerHTML = `<input class="desc-input" value="${cur}">
+    <div class="d-flex gap-1 mt-1">
+      <button style="background:var(--income);color:#fff;border:none;border-radius:5px;padding:2px 9px;font-size:.72rem;cursor:pointer" onclick="saveDesc(this,${expenseId})">Save</button>
+      <button style="background:var(--border);color:var(--text);border:none;border-radius:5px;padding:2px 9px;font-size:.72rem;cursor:pointer" onclick="cancelEditDesc(this)">Cancel</button>
+    </div>`;
+  cell.querySelector('input').focus();
+}
+
+async function saveDesc(btn, expenseId) {
+  const cell = btn.closest('td');
+  const newDesc = cell.querySelector('input').value.trim();
+  const r = await fetch(`/api/expense/${expenseId}/description`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description: newDesc })
+  });
+  if (r.status === 401) { location.href = '/login'; return; }
+  await loadCurrent();
+  toast('Description updated');
+}
+
+function cancelEditDesc(btn) {
+  if (currentData) renderTransactions(currentData);
+}
+
+// ── Theme ─────────────────────────────────────────────────────────────────────
+function toggleTheme() {
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  applyTheme(isDark ? 'light' : 'dark');
+}
+
+function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('et-theme', theme);
+  const icon  = document.getElementById('theme-icon');
+  const label = document.getElementById('theme-label');
+  if (icon)  icon.className  = theme === 'dark' ? 'fa-solid fa-sun me-1'  : 'fa-solid fa-moon me-1';
+  if (label) label.textContent = theme === 'dark' ? 'Light Mode' : 'Dark Mode';
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
+function showView(name) {
+  document.getElementById('view-current').style.display = name === 'current' ? 'block' : 'none';
+  document.getElementById('view-history').style.display = name === 'history' ? 'block' : 'none';
+  document.getElementById('view-reports').style.display = name === 'reports' ? 'block' : 'none';
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  catFilter = null;
+  document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('legend-active'));
+  if (name === 'reports') loadReports();
+}
+
+// ── Reports view ─────────────────────────────────────────────────────────────
+let rptData = null;
+let rptPieChart = null;
+
+async function loadReports() {
+  const months = await fetchJSON('/api/months');
+  renderReportsGrid(months);
+}
+
+function renderReportsGrid(months) {
+  const grid = document.getElementById('reports-grid');
+  if (!months.length) {
+    grid.innerHTML = `<div class="col-12"><div class="empty-state"><i class="fa-solid fa-file-invoice-dollar"></i><p>No reports yet. Record your first salary to begin.</p></div></div>`;
+    return;
+  }
+  grid.innerHTML = months.map(m => {
+    const savPct = m.salary > 0 ? ((m.savings_total||0) / m.salary * 100).toFixed(1) : '0.0';
+    const outPct = m.salary > 0 ? ((m.fixed_total + m.var_total) / m.salary * 100).toFixed(1) : '0.0';
+    const isActive = m.status === 'active';
+    return `
+      <div class="col-sm-6 col-lg-4">
+        <div class="report-card" onclick="openReport(${m.id})">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div style="font-size:1rem;font-weight:700">${m.name} ${m.year}</div>
+            ${isActive
+              ? '<span style="font-size:.68rem;background:rgba(16,185,129,.15);color:var(--income);padding:2px 9px;border-radius:10px;font-weight:700">ACTIVE</span>'
+              : '<span style="font-size:.68rem;background:#F1F5F9;color:var(--muted);padding:2px 9px;border-radius:10px;font-weight:700">CLOSED</span>'}
+          </div>
+          <div class="hc-row"><span>Salary</span><span>${AED(m.salary)}</span></div>
+          <div class="hc-row"><span>Fixed Costs</span><span>${AED(m.fixed_total)}</span></div>
+          <div class="hc-row"><span>Variable</span><span>${AED(m.var_total)}</span></div>
+          <div class="hc-row"><span>Savings</span><span style="color:var(--savings)">${AED(m.savings_total||0)}</span></div>
+          <div class="hc-row" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
+            <span style="font-weight:600">Balance</span>
+            <span style="font-weight:700;color:${m.balance>=0?'var(--income)':'var(--expense)'}">${AED(m.balance)}</span>
+          </div>
+          <div class="d-flex gap-3 mt-2" style="font-size:.75rem;color:var(--muted)">
+            <span><span style="color:var(--savings);font-weight:600">${savPct}%</span> saved</span>
+            <span><span style="color:var(--expense);font-weight:600">${outPct}%</span> spent</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function openReport(monthId) {
+  const d = await fetchJSON(`/api/month/${monthId}`);
+  rptData = d;
+  const m = d.month;
+  document.getElementById('rpt-title').textContent = `${m.name} ${m.year} — Statement`;
+  document.getElementById('report-detail').style.display = 'block';
+
+  document.getElementById('rpt-stats').innerHTML = `
+    <div class="col-6 col-md"><div class="stat-card card-income" style="padding:16px 18px">
+      <div class="label">Salary</div><div class="value" style="font-size:1.1rem">${AED(m.salary)}</div>
+    </div></div>
+    <div class="col-6 col-md"><div class="stat-card card-fixed" style="padding:16px 18px">
+      <div class="label">Fixed Costs</div><div class="value" style="font-size:1.1rem">${AED(d.fixed_total)}</div>
+    </div></div>
+    <div class="col-6 col-md"><div class="stat-card card-expense" style="padding:16px 18px">
+      <div class="label">Variable</div><div class="value" style="font-size:1.1rem">${AED(d.var_total)}</div>
+    </div></div>
+    <div class="col-6 col-md"><div class="stat-card card-savings" style="padding:16px 18px">
+      <div class="label">Savings</div><div class="value" style="font-size:1.1rem">${AED(d.savings_total||0)}</div>
+    </div></div>
+    <div class="col-6 col-md"><div class="stat-card card-balance" style="padding:16px 18px">
+      <div class="label">Balance</div><div class="value" style="font-size:1.1rem">${AED(d.balance)}</div>
+    </div></div>`;
+
+  renderRptPie(d);
+  renderRptCategories(d);
+  renderRptTransactions(d);
+  document.getElementById('report-detail').scrollIntoView({ behavior:'smooth' });
+}
+
+function renderRptPie(d) {
+  const labels = [], values = [], colors = [];
+  let idx = 0;
+  Object.entries(d.expenses_by_category).forEach(([c,v]) => {
+    labels.push(c.charAt(0).toUpperCase()+c.slice(1)); values.push(v); colors.push(catColor(c, idx++));
+  });
+  if ((d.savings_total||0) > 0) { labels.push('Savings'); values.push(d.savings_total); colors.push('#14B8A6'); }
+
+  if (rptPieChart) rptPieChart.destroy();
+  if (!values.length) { document.getElementById('rpt-pie-legend').innerHTML = '<p class="text-muted small text-center">No data</p>'; return; }
+
+  rptPieChart = new Chart(document.getElementById('rptPie'), {
+    type: 'doughnut',
+    data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 2, borderColor: '#fff', hoverOffset: 6 }] },
+    options: {
+      responsive: true, maintainAspectRatio: true, cutout: '60%',
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${AED(ctx.raw)}` } }
+      }
+    }
+  });
+
+  document.getElementById('rpt-pie-legend').innerHTML = labels.map((l,i) => `
+    <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:.78rem">
+      <div class="d-flex align-items-center gap-2">
+        <div style="width:9px;height:9px;border-radius:2px;background:${colors[i]};flex-shrink:0"></div>
+        <span>${l}</span>
+      </div>
+      <span style="font-weight:600">${AED(values[i])}</span>
+    </div>`).join('');
+}
+
+function renderRptCategories(d) {
+  const items = [
+    ...d.fixed_costs.map(fc => ({ name: fc.name, amount: fc.amount, color: '#F59E0B' })),
+    ...Object.entries(d.expenses_by_category).map(([c,v]) => ({ name: c.charAt(0).toUpperCase()+c.slice(1), amount: v, color: '#EF4444' })),
+    ...((d.savings_total||0) > 0 ? [{ name: 'Savings', amount: d.savings_total, color: '#14B8A6' }] : []),
+  ];
+  const max = Math.max(...items.map(i => i.amount), 1);
+  document.getElementById('rpt-categories').innerHTML = items.length ? items.map(item => `
+    <div class="mb-3">
+      <div class="d-flex justify-content-between" style="font-size:.82rem;margin-bottom:4px">
+        <span style="font-weight:500">${item.name}</span>
+        <span style="font-weight:600">${AED(item.amount)}</span>
+      </div>
+      <div class="cat-bar">
+        <div class="cat-bar-fill" style="width:${(item.amount/max*100).toFixed(1)}%;background:${item.color}"></div>
+      </div>
+    </div>`).join('') : '<p class="text-muted small">No data</p>';
+}
+
+function renderRptTransactions(d) {
+  const allTx = [
+    ...d.fixed_costs.map(fc => ({ type:'fixed', id:null, date:'—', category:fc.name, amount:fc.amount, description:'Monthly fixed cost' })),
+    ...d.expenses.map(e => ({ type:'variable', id:e.id, date:e.expense_date, category:e.category, amount:e.amount, description:e.description||'' }))
+  ];
+  if (!allTx.length) {
+    document.getElementById('rpt-transactions').innerHTML = '<div class="empty-state"><i class="fa-solid fa-receipt"></i><p>No transactions</p></div>';
+    return;
+  }
+  const thStyle = 'font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:10px 24px;background:#F8FAFC;text-align:left;border-bottom:1px solid var(--border)';
+  const tbody = allTx.map(t => {
+    const isSav = t.category.toLowerCase() === 'savings';
+    const color = t.type==='fixed' ? '#F59E0B' : isSav ? '#14B8A6' : '#EF4444';
+    const bg    = t.type==='fixed' ? 'rgba(245,158,11,.1)' : isSav ? 'rgba(20,184,166,.1)' : 'rgba(239,68,68,.1)';
+    const safeDesc = (t.description||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    const actions = t.type === 'variable' ? `
+      <button class="action-btn edit-btn" onclick="startRptEditDesc(this,${t.id},'${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+      <button class="action-btn del-btn" onclick="deleteRptExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>` : '';
+    return `<tr>
+      <td style="color:var(--muted);font-size:.8rem;padding:10px 24px">${t.date}</td>
+      <td style="padding:10px 24px"><span class="cat-badge" style="background:${bg};color:${color}">${t.category.charAt(0).toUpperCase()+t.category.slice(1)}</span></td>
+      <td style="font-weight:600;color:${color};padding:10px 24px">${AED(t.amount)}</td>
+      <td class="desc-cell" style="color:var(--muted);font-size:.8rem;padding:10px 24px;min-width:120px">${t.description||'—'}</td>
+      <td style="padding:10px 14px;white-space:nowrap;text-align:right">${actions}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('rpt-transactions').innerHTML = `
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="${thStyle}">Date</th>
+        <th style="${thStyle}">Category</th>
+        <th style="${thStyle}">Amount</th>
+        <th style="${thStyle}">Description</th>
+        <th style="${thStyle}"></th>
+      </tr></thead>
+      <tbody>${tbody}</tbody>
+    </table>`;
+}
+
+async function deleteRptExpense(expenseId) {
+  if (!confirm('Delete this expense?')) return;
+  const r = await fetch(`/api/expense/${expenseId}`, { method: 'DELETE' });
+  if (r.status === 401) { location.href = '/login'; return; }
+  if (rptData) { const d = await fetchJSON(`/api/month/${rptData.month.id}`); rptData = d; renderRptTransactions(d); renderRptPie(d); renderRptCategories(d); }
+  await loadCurrent();
+  toast('Expense deleted');
+}
+
+function startRptEditDesc(btn, expenseId, currentDesc) {
+  const cell = btn.closest('tr').querySelector('.desc-cell');
+  const cur = currentDesc === '—' ? '' : currentDesc;
+  cell.innerHTML = `<input class="desc-input" value="${cur}">
+    <div class="d-flex gap-1 mt-1">
+      <button style="background:var(--income);color:#fff;border:none;border-radius:5px;padding:2px 9px;font-size:.72rem;cursor:pointer" onclick="saveRptDesc(this,${expenseId})">Save</button>
+      <button style="background:var(--border);color:var(--text);border:none;border-radius:5px;padding:2px 9px;font-size:.72rem;cursor:pointer" onclick="cancelRptEditDesc()">Cancel</button>
+    </div>`;
+  cell.querySelector('input').focus();
+}
+
+async function saveRptDesc(btn, expenseId) {
+  const newDesc = btn.closest('td').querySelector('input').value.trim();
+  const r = await fetch(`/api/expense/${expenseId}/description`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ description: newDesc })
+  });
+  if (r.status === 401) { location.href = '/login'; return; }
+  if (rptData) { const d = await fetchJSON(`/api/month/${rptData.month.id}`); rptData = d; renderRptTransactions(d); }
+  toast('Description updated');
+}
+
+function cancelRptEditDesc() {
+  if (rptData) renderRptTransactions(rptData);
+}
+
+function closeReportDetail() {
+  document.getElementById('report-detail').style.display = 'none';
+  if (rptPieChart) { rptPieChart.destroy(); rptPieChart = null; }
+  rptData = null;
+}
+
+// ── PDF Generation ───────────────────────────────────────────────────────────
+function downloadReportPDF() {
+  if (!rptData) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const d = rptData, m = d.month;
+  const pageW = 210, pageH = 297, mg = 16;
+  let y = 0;
+
+  const checkY = (need) => { if (y + need > pageH - mg) { doc.addPage(); y = mg; } };
+
+  // Header bar
+  doc.setFillColor(30, 41, 59);
+  doc.rect(0, 0, pageW, 40, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18);
+  doc.text('MONTHLY STATEMENT', mg, 16);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11);
+  doc.text(`${m.name} ${m.year}`, mg, 26);
+  doc.setFontSize(8); doc.setTextColor(148, 163, 184);
+  doc.text(`Generated ${new Date().toLocaleDateString('en-GB', {day:'2-digit',month:'long',year:'numeric'})}`, mg, 34);
+  y = 50;
+
+  // Summary table
+  doc.setTextColor(30, 41, 59); doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+  doc.text('Financial Summary', mg, y); y += 8;
+
+  const summaryRows = [
+    ['Salary / Income',    m.salary,                [16,185,129]],
+    ['Fixed Costs',        d.fixed_total,            [245,158,11]],
+    ['Variable Expenses',  d.var_total,              [239,68,68]],
+    ['Savings',            d.savings_total||0,       [20,184,166]],
+    ['Balance Remaining',  d.balance,                [99,102,241]],
+  ];
+
+  summaryRows.forEach((row, i) => {
+    if (i % 2 === 0) { doc.setFillColor(248,250,252); doc.rect(mg, y-5, pageW-mg*2, 10, 'F'); }
+    doc.setFillColor(...row[2]); doc.rect(mg, y-5, 3, 10, 'F');
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(100,116,139);
+    doc.text(row[0], mg+6, y);
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(30,41,59);
+    doc.text(`AED ${Number(row[1]).toLocaleString('en-US',{minimumFractionDigits:2})}`, pageW-mg, y, {align:'right'});
+    y += 10;
+  });
+  y += 6;
+
+  // Callout boxes
+  const savPct = m.salary > 0 ? ((d.savings_total||0)/m.salary*100).toFixed(1) : '0.0';
+  const balPct = m.salary > 0 ? (d.balance/m.salary*100).toFixed(1) : '0.0';
+  checkY(24);
+  doc.setFillColor(20,184,166); doc.roundedRect(mg, y, 84, 20, 3, 3, 'F');
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8);
+  doc.text('SAVINGS RATE', mg+5, y+7);
+  doc.setFontSize(14); doc.text(`${savPct}%`, mg+5, y+16);
+  doc.setFillColor(99,102,241); doc.roundedRect(mg+88, y, 84, 20, 3, 3, 'F');
+  doc.setFontSize(8); doc.text('BALANCE REMAINING', mg+93, y+7);
+  doc.setFontSize(14); doc.text(`${balPct}%`, mg+93, y+16);
+  y += 28;
+
+  // Pie chart image
+  const pieCanvas = document.getElementById('rptPie');
+  if (pieCanvas && rptPieChart) {
+    try {
+      checkY(90);
+      doc.setTextColor(30,41,59); doc.setFont('helvetica','bold'); doc.setFontSize(12);
+      doc.text('Expense Breakdown', mg, y); y += 6;
+      const imgData = pieCanvas.toDataURL('image/png');
+      doc.addImage(imgData, 'PNG', mg, y, 78, 78);
+      y += 84;
+    } catch(e) {}
+  }
+
+  // Category breakdown
+  checkY(20);
+  doc.setTextColor(30,41,59); doc.setFont('helvetica','bold'); doc.setFontSize(12);
+  doc.text('Category Breakdown', mg, y); y += 8;
+
+  const catItems = [
+    ...d.fixed_costs.map(fc => ({ name: fc.name, amount: fc.amount, color:[245,158,11] })),
+    ...Object.entries(d.expenses_by_category).map(([c,v]) => ({ name: c.charAt(0).toUpperCase()+c.slice(1), amount: v, color:[239,68,68] })),
+    ...((d.savings_total||0) > 0 ? [{ name: 'Savings', amount: d.savings_total, color:[20,184,166] }] : []),
+  ];
+  const maxAmt = Math.max(...catItems.map(i => i.amount), 1);
+  const barW = 100;
+
+  catItems.forEach((item, i) => {
+    checkY(12);
+    if (i%2===0) { doc.setFillColor(248,250,252); doc.rect(mg, y-4, pageW-mg*2, 12, 'F'); }
+    doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(100,116,139);
+    doc.text(item.name, mg+2, y+1);
+    doc.setFont('helvetica','bold'); doc.setTextColor(30,41,59);
+    doc.text(`AED ${Number(item.amount).toLocaleString('en-US',{minimumFractionDigits:2})}`, pageW-mg, y+1, {align:'right'});
+    doc.setFillColor(226,232,240); doc.rect(mg+2, y+3, barW, 3, 'F');
+    doc.setFillColor(...item.color); doc.rect(mg+2, y+3, barW*(item.amount/maxAmt), 3, 'F');
+    y += 12;
+  });
+  y += 6;
+
+  // Transactions table
+  checkY(24);
+  doc.setTextColor(30,41,59); doc.setFont('helvetica','bold'); doc.setFontSize(12);
+  doc.text('All Transactions', mg, y); y += 8;
+
+  doc.setFillColor(30,41,59); doc.rect(mg, y-5, pageW-mg*2, 10, 'F');
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(8);
+  doc.text('Date', mg+2, y+1);
+  doc.text('Category', mg+30, y+1);
+  doc.text('Description', mg+70, y+1);
+  doc.text('Amount', pageW-mg, y+1, {align:'right'});
+  y += 10;
+
+  const allTx = [
+    ...d.fixed_costs.map(fc => ({ date:'—', cat:fc.name, desc:'Fixed cost', amt:fc.amount, color:[245,158,11] })),
+    ...d.expenses.map(e => ({
+      date: e.expense_date,
+      cat: e.category.charAt(0).toUpperCase()+e.category.slice(1),
+      desc: e.description||'—',
+      amt: e.amount,
+      color: e.category==='savings' ? [20,184,166] : [239,68,68]
+    })),
+  ];
+
+  allTx.forEach((t, i) => {
+    checkY(9);
+    if (i%2===0) { doc.setFillColor(248,250,252); doc.rect(mg, y-4, pageW-mg*2, 9, 'F'); }
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(100,116,139);
+    doc.text(String(t.date), mg+2, y+1);
+    doc.setFillColor(...t.color); doc.circle(mg+27, y, 1.5, 'F');
+    doc.setTextColor(30,41,59);
+    doc.text(t.cat, mg+31, y+1);
+    const desc = t.desc.length > 32 ? t.desc.slice(0,32)+'…' : t.desc;
+    doc.text(desc, mg+70, y+1);
+    doc.setFont('helvetica','bold');
+    doc.text(`AED ${Number(t.amt).toLocaleString('en-US',{minimumFractionDigits:2})}`, pageW-mg, y+1, {align:'right'});
+    y += 9;
+  });
+
+  // Footer on every page
+  const totalPages = doc.internal.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setFillColor(248,250,252); doc.rect(0, pageH-12, pageW, 12, 'F');
+    doc.setTextColor(148,163,184); doc.setFont('helvetica','normal'); doc.setFontSize(7);
+    doc.text(`${m.name} ${m.year} — Expense Tracker Statement`, mg, pageH-4);
+    doc.text(`Page ${p} of ${totalPages}`, pageW-mg, pageH-4, {align:'right'});
+  }
+
+  doc.save(`statement-${m.name.toLowerCase()}-${m.year}.pdf`);
+}
+
+// ── Toast ────────────────────────────────────────────────────────────────────
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 2500);
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+(async () => {
+  applyTheme(localStorage.getItem('et-theme') || 'light');
+  await refreshAll();
+  setInterval(refreshAll, 30000);
+})();
+</script>
+
+</body>
+</html>
