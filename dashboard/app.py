@@ -661,6 +661,7 @@ def telegram_webhook(token):
         return "forbidden", 403
 
     import asyncio
+    import traceback
 
     payload  = request.get_json(force=True) or {}
     message  = payload.get("message", {})
@@ -670,7 +671,10 @@ def telegram_webhook(token):
     if not text or not chat_id:
         return "ok"
 
-    reply = _process_tg_text(text)
+    try:
+        reply = _process_tg_text(text)
+    except Exception:
+        return traceback.format_exc(), 500
 
     async def _send():
         from telegram import Bot
@@ -678,7 +682,11 @@ def telegram_webhook(token):
         async with bot:
             await bot.send_message(chat_id=chat_id, text=reply, parse_mode="Markdown")
 
-    asyncio.run(_send())
+    try:
+        asyncio.run(_send())
+    except Exception:
+        return traceback.format_exc(), 500
+
     return "ok"
 
 
