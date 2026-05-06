@@ -1,9 +1,17 @@
 import sqlite3
-import calendar
 from contextlib import contextmanager
 from typing import Optional, Dict, List
 
-from config import DB_PATH
+from config import DB_PATH, TURSO_URL, TURSO_TOKEN
+
+_use_turso = bool(TURSO_URL and TURSO_TOKEN)
+
+if _use_turso:
+    import libsql_experimental as libsql
+
+
+def _dict_factory(cursor, row):
+    return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
 
 class Database:
@@ -13,12 +21,19 @@ class Database:
 
     @contextmanager
     def _conn(self):
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA journal_mode=WAL")
+        if _use_turso:
+            conn = libsql.connect(self.db_path, sync_url=TURSO_URL, auth_token=TURSO_TOKEN)
+            conn.sync()
+        else:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.execute("PRAGMA journal_mode=WAL")
+
+        conn.row_factory = _dict_factory
         try:
             yield conn
             conn.commit()
+            if _use_turso:
+                conn.sync()
         except Exception:
             conn.rollback()
             raise
@@ -27,7 +42,7 @@ class Database:
 
     def _init_db(self):
         with self._conn() as conn:
-            conn.executescript("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS months (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
                     year        INTEGER NOT NULL,
@@ -37,16 +52,18 @@ class Database:
                     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     closed_at   TIMESTAMP,
                     UNIQUE(year, month)
-                );
-
+                )
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS fixed_costs (
                     id        INTEGER PRIMARY KEY AUTOINCREMENT,
                     month_id  INTEGER NOT NULL,
                     name      TEXT    NOT NULL,
                     amount    REAL    NOT NULL,
                     FOREIGN KEY (month_id) REFERENCES months(id)
-                );
-
+                )
+            """)
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS expenses (
                     id            INTEGER PRIMARY KEY AUTOINCREMENT,
                     month_id      INTEGER NOT NULL,
@@ -56,7 +73,7 @@ class Database:
                     expense_date  DATE    NOT NULL,
                     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (month_id) REFERENCES months(id)
-                );
+                )
             """)
 
     # ── Month operations ──────────────────────────────────────────────────────
@@ -66,7 +83,7 @@ class Database:
             row = conn.execute(
                 "SELECT * FROM months WHERE status='active' ORDER BY year DESC, month DESC LIMIT 1"
             ).fetchone()
-            return dict(row) if row else None
+            return row
 
     def create_or_get_month(self, year: int, month: int, salary: float) -> int:
         with self._conn() as conn:
@@ -97,17 +114,18 @@ class Database:
             rows = conn.execute(
                 "SELECT * FROM months ORDER BY year DESC, month DESC"
             ).fetchall()
-            return [dict(r) for r in rows]
+            return rows
 
     # ── Fixed costs ───────────────────────────────────────────────────────────
 
     def add_fixed_costs(self, month_id: int, costs: Dict[str, float]):
         with self._conn() as conn:
             conn.execute("DELETE FROM fixed_costs WHERE month_id=?", (month_id,))
-            conn.executemany(
-                "INSERT INTO fixed_costs (month_id, name, amount) VALUES (?,?,?)",
-                [(month_id, name, amount) for name, amount in costs.items()]
-            )
+            for name, amount in costs.items():
+                conn.execute(
+                    "INSERT INTO fixed_costs (month_id, name, amount) VALUES (?,?,?)",
+                    (month_id, name, amount)
+                )
 
     # ── Expenses ──────────────────────────────────────────────────────────────
 
@@ -126,23 +144,21 @@ class Database:
             conn.execute("DELETE FROM expenses WHERE id=?", (expense_id,))
 
     def find_expense(self, month_id: int, category: str, amount: float):
-        """Most recent expense in the month matching category + amount."""
         with self._conn() as conn:
             row = conn.execute(
                 "SELECT * FROM expenses WHERE month_id=? AND category=? AND ABS(amount - ?) < 0.01 "
                 "ORDER BY created_at DESC LIMIT 1",
                 (month_id, category, amount)
             ).fetchone()
-            return dict(row) if row else None
+            return row
 
     def get_last_expense(self, month_id: int):
-        """Most recently added expense in the month."""
         with self._conn() as conn:
             row = conn.execute(
                 "SELECT * FROM expenses WHERE month_id=? ORDER BY created_at DESC LIMIT 1",
                 (month_id,)
             ).fetchone()
-            return dict(row) if row else None
+            return row
 
     def update_expense_description(self, expense_id: int, description: str):
         with self._conn() as conn:
@@ -181,17 +197,14 @@ class Database:
             if not row:
                 return 0.0
             salary = row["salary"]
-
             fixed = conn.execute(
                 "SELECT COALESCE(SUM(amount),0) total FROM fixed_costs WHERE month_id=?",
                 (month_id,)
             ).fetchone()["total"]
-
             spent = conn.execute(
                 "SELECT COALESCE(SUM(amount),0) total FROM expenses WHERE month_id=?",
                 (month_id,)
             ).fetchone()["total"]
-
             return salary - fixed - spent
 
     def get_last_closed_month(self) -> Optional[Dict]:
@@ -199,7 +212,7 @@ class Database:
             row = conn.execute(
                 "SELECT * FROM months WHERE status='closed' ORDER BY closed_at DESC LIMIT 1"
             ).fetchone()
-            return dict(row) if row else None
+            return row
 
     def delete_month_cascade(self, month_id: int):
         with self._conn() as conn:
@@ -227,7 +240,7 @@ class Database:
                 (month_id,)
             ).fetchall()
             return {
-                "month": dict(month),
-                "fixed_costs": [dict(r) for r in fixed],
-                "expenses": [dict(r) for r in expenses],
+                "month": month,
+                "fixed_costs": fixed,
+                "expenses": expenses,
             }
