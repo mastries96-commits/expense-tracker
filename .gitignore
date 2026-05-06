@@ -1,7 +1,7 @@
-# ── Sensitive config (copy config.example.py → config.py and fill in your values)
-config.py
+# ── Local secrets (never commit these)
+.env
 
-# ── Database (contains personal expense data)
+# ── Database (personal data — stays local or on server volume)
 *.db
 *.sqlite
 *.sqlite3
@@ -16,7 +16,6 @@ __pycache__/
 venv/
 .venv/
 env/
-.env
 
 # ── OS / editor junk
 .DS_Store
