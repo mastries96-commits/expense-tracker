@@ -535,24 +535,150 @@ def setup_webhook():
 
 _BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
+
+def _process_tg_text(text: str) -> str:
+    """Run the same logic as /api/chat and return a plain-text reply."""
+    import calendar as _cal
+    now = _dt.datetime.now()
+    cmd = text.strip().lower().lstrip("/")
+
+    if cmd in ("balance", "b"):
+        active = db.get_active_month()
+        if not active:
+            return "⚠️ No active month. Record your salary first: +Salary 15000"
+        data  = db.get_month_details(active["id"])
+        fixed = sum(f["amount"] for f in data["fixed_costs"])
+        spent = sum(e["amount"] for e in data["expenses"])
+        bal   = db.get_balance(active["id"])
+        lines = [
+            f"💰 *{_cal.month_name[active['month']]} {active['year']}*",
+            f"Salary:    AED {active['salary']:>10,.2f}",
+            f"Fixed:     AED {fixed:>10,.2f}",
+            f"Expenses:  AED {spent:>10,.2f}",
+            f"─────────────────────",
+            f"Remaining: *AED {bal:>10,.2f}*",
+        ]
+        by_cat = db.get_expenses_summary(active["id"])
+        if by_cat:
+            lines.append("")
+            for cat, total in sorted(by_cat.items(), key=lambda x: -x[1]):
+                emoji = EXPENSE_CATEGORIES.get(cat, "💸")
+                lines.append(f"{emoji} {cat.capitalize()}: AED {total:,.2f}")
+        return "\n".join(lines)
+
+    if cmd in ("summary", "s"):
+        active = db.get_active_month()
+        if not active:
+            return "⚠️ No active month."
+        data      = db.get_month_details(active["id"])
+        fixed_tot = sum(f["amount"] for f in data["fixed_costs"])
+        var_tot   = sum(e["amount"] for e in data["expenses"])
+        bal       = db.get_balance(active["id"])
+        pct       = (bal / active["salary"] * 100) if active["salary"] else 0
+        return (f"📊 *{_cal.month_name[active['month']]} {active['year']}*\n"
+                f"Salary:   AED {active['salary']:,.2f}\n"
+                f"Fixed:    AED {fixed_tot:,.2f}\n"
+                f"Variable: AED {var_tot:,.2f}\n"
+                f"Balance:  *AED {bal:,.2f}* ({pct:.1f}%)")
+
+    if cmd in ("undo", "u"):
+        active = db.get_active_month()
+        if not active:
+            return "Nothing to undo."
+        expense = db.get_last_expense(active["id"])
+        if expense:
+            db.delete_expense(expense["id"])
+            bal = db.get_balance(active["id"])
+            return (f"↩️ *Undone:* {expense['category'].capitalize()} — AED {expense['amount']:,.2f}\n"
+                    f"💰 Balance: AED {bal:,.2f}")
+        prev = db.get_last_closed_month()
+        db.delete_month_cascade(active["id"])
+        if prev:
+            db.reopen_month(prev["id"])
+            return f"↩️ Salary undone. *{_cal.month_name[prev['month']]} {prev['year']}* restored."
+        return "↩️ Salary entry undone."
+
+    if cmd in ("help", "h", "?", "start"):
+        return (
+            "💰 *Expense Tracker*\n\n"
+            "➕ *Add expense:*\n`food 150`, `kfc 80 dinner`, `petrol 200`\n\n"
+            "💼 *Add salary:*\n`+Salary 15000`\n\n"
+            "📊 *Commands:*\n"
+            "/balance — remaining balance\n"
+            "/summary — full breakdown\n"
+            "/undo — remove last entry\n"
+            "/help — this message"
+        )
+
+    sal_match = re.match(r"^\+?salary\s+([\d,]+(?:\.\d+)?)", text.strip(), re.IGNORECASE)
+    if sal_match:
+        amount = float(sal_match.group(1).replace(",", ""))
+        prev   = db.get_active_month()
+        if prev:
+            db.close_month(prev["id"])
+            new_year  = prev["year"] + 1 if prev["month"] == 12 else prev["year"]
+            new_month = 1 if prev["month"] == 12 else prev["month"] + 1
+        else:
+            new_year, new_month = now.year, now.month
+        month_id  = db.create_or_get_month(new_year, new_month, amount)
+        db.add_fixed_costs(month_id, FIXED_COSTS)
+        fixed_tot = sum(FIXED_COSTS.values())
+        balance   = amount - fixed_tot
+        lines = [f"  • {n}: AED {v:,.2f}" for n, v in FIXED_COSTS.items()]
+        return (f"✅ *Salary AED {amount:,.2f} recorded*\n\n"
+                f"📌 Fixed costs deducted:\n" + "\n".join(lines) + "\n\n"
+                f"📅 *{_cal.month_name[new_month]} {new_year}* is now active\n"
+                f"💵 Available: *AED {balance:,.2f}*")
+
+    exp_match = re.match(
+        r"^\+?([a-zA-Z][a-zA-Z\s\-'&]*?)\s+([\d,]+(?:\.\d+)?)\s*(.*)?$", text.strip()
+    )
+    if exp_match and not text.strip().startswith("/"):
+        pre          = exp_match.group(1).strip()
+        amount       = float(exp_match.group(2).replace(",", ""))
+        post         = (exp_match.group(3) or "").strip()
+        raw_category = pre.split()[0].lower()
+        extra        = " ".join(pre.split()[1:])
+        description  = " ".join(filter(None, [extra, post]))
+        category     = CATEGORY_ALIASES.get(raw_category, raw_category)
+        active = db.get_active_month()
+        if not active:
+            return "⚠️ No active month. Record your salary first: +Salary 15000"
+        db.add_expense(active["id"], category, amount, description, str(now.date()))
+        balance = db.get_balance(active["id"])
+        emoji   = EXPENSE_CATEGORIES.get(category, "💸")
+        warn    = "\n\n⚠️ *Balance running low!*" if balance < 500 else ""
+        desc_ln = f"\n📝 _{description}_" if description else ""
+        return (f"✅ {emoji} *{category.capitalize()}* — AED {amount:,.2f}{desc_ln}\n"
+                f"💰 Remaining: *AED {balance:,.2f}*{warn}")
+
+    return "❓ Didn't get that. Try: `food 150`, `+Salary 15000`, /balance, /help"
+
+
 @app.route("/webhook/<token>", methods=["POST"])
 def telegram_webhook(token):
     if not _BOT_TOKEN or token != _BOT_TOKEN:
         return "forbidden", 403
+
     import asyncio
-    from telegram import Update
-    from bot import build_application
 
-    payload = request.get_json(force=True)
+    payload  = request.get_json(force=True) or {}
+    message  = payload.get("message", {})
+    text     = (message.get("text") or "").strip()
+    chat_id  = (message.get("chat") or {}).get("id")
 
-    async def _handle():
-        tg_app = build_application()
-        await tg_app.initialize()
-        update = Update.de_json(payload, tg_app.bot)
-        await tg_app.process_update(update)
-        await tg_app.shutdown()
+    if not text or not chat_id:
+        return "ok"
 
-    asyncio.run(_handle())
+    reply = _process_tg_text(text)
+
+    async def _send():
+        from telegram import Bot
+        bot = Bot(token=_BOT_TOKEN)
+        async with bot:
+            await bot.send_message(chat_id=chat_id, text=reply, parse_mode="Markdown")
+
+    asyncio.run(_send())
     return "ok"
 
 
