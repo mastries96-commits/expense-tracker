@@ -10,11 +10,11 @@ def _to_arg(v):
     if v is None:
         return {"type": "null"}
     if isinstance(v, bool):
-        return {"type": "integer", "value": int(v)}
+        return {"type": "integer", "value": str(int(v))}   # hrana: integers as strings
     if isinstance(v, int):
-        return {"type": "integer", "value": v}
+        return {"type": "integer", "value": str(v)}        # hrana: integers as strings
     if isinstance(v, float):
-        return {"type": "float", "value": v}
+        return {"type": "float", "value": v}               # hrana: floats as JSON numbers
     return {"type": "text", "value": str(v)}
 
 
@@ -65,8 +65,12 @@ class TursoConnection:
             },
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            data = json.loads(resp.read())
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            raise Exception(f"Turso HTTP {e.code}: {body}")
         return data["results"]
 
     def execute(self, sql, params=()):
