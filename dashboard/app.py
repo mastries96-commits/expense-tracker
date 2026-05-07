@@ -669,12 +669,20 @@ def _process_tg_text(text: str) -> str:
     return "❓ Didn't get that. Try: `food 150`, `+Salary 15000`, /balance, /help"
 
 
+def _tg_send(chat_id, text):
+    import urllib.request as _ur
+    import json as _json
+    url  = f"https://api.telegram.org/bot{_BOT_TOKEN}/sendMessage"
+    body = _json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
+    req  = _ur.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+    with _ur.urlopen(req, timeout=10) as r:
+        return _json.loads(r.read())
+
+
 @app.route("/webhook/<token>", methods=["POST"])
 def telegram_webhook(token):
     if not _BOT_TOKEN or token != _BOT_TOKEN:
         return "forbidden", 403
-
-    import asyncio
 
     payload  = request.get_json(force=True) or {}
     message  = payload.get("message", {})
@@ -687,19 +695,13 @@ def telegram_webhook(token):
     try:
         reply = _process_tg_text(text)
     except Exception as e:
-        app.logger.error(f"Webhook process error: {e}")
-        return "ok"
-
-    async def _send():
-        from telegram import Bot
-        bot = Bot(token=_BOT_TOKEN)
-        async with bot:
-            await bot.send_message(chat_id=chat_id, text=reply, parse_mode="Markdown")
+        app.logger.error(f"Webhook process error: {e}", exc_info=True)
+        reply = "⚠️ Something went wrong. Please try again."
 
     try:
-        asyncio.run(_send())
+        _tg_send(chat_id, reply)
     except Exception as e:
-        app.logger.error(f"Webhook send error: {e}")
+        app.logger.error(f"Webhook send error: {e}", exc_info=True)
 
     return "ok"
 
