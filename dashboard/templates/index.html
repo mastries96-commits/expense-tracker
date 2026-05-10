@@ -774,6 +774,9 @@
       <div class="page-header" style="margin-bottom:16px">
         <h5 id="rpt-title" style="margin:0;font-weight:700">Statement</h5>
         <div class="d-flex gap-2">
+          <button class="btn btn-sm" id="rpt-weekly-btn" onclick="toggleWeekly()" style="background:#3B82F6;color:#fff;border:none">
+            <i class="fa-solid fa-calendar-week me-1"></i> Weekly
+          </button>
           <button class="btn btn-sm" style="background:#14B8A6;color:#fff;border:none" onclick="downloadReportPDF()">
             <i class="fa-solid fa-file-pdf me-1"></i> Download PDF
           </button>
@@ -800,6 +803,15 @@
           </div>
         </div>
       </div>
+
+      <!-- Weekly spend chart (toggled by Weekly button) -->
+      <div class="chart-card mb-4" id="rpt-weekly-section" style="display:none">
+        <h6><i class="fa-solid fa-calendar-week me-2"></i>Weekly Spend</h6>
+        <div style="height:220px;position:relative">
+          <canvas id="rptWeekly"></canvas>
+        </div>
+      </div>
+
       <div class="table-card">
         <div class="table-header">
           <h6><i class="fa-solid fa-list me-2"></i>All Transactions</h6>
@@ -1604,6 +1616,8 @@ function showView(name) {
 // ── Reports view ─────────────────────────────────────────────────────────────
 let rptData = null;
 let rptPieChart = null;
+let rptWeeklyChart = null;
+let rptWeeklyVisible = false;
 
 async function loadReports() {
   const months = await fetchJSON('/api/months');
@@ -1652,6 +1666,12 @@ async function openReport(monthId) {
   const m = d.month;
   document.getElementById('rpt-title').textContent = `${m.name} ${m.year} — Statement`;
   document.getElementById('report-detail').style.display = 'block';
+
+  // Reset weekly section
+  if (rptWeeklyChart) { rptWeeklyChart.destroy(); rptWeeklyChart = null; }
+  rptWeeklyVisible = false;
+  document.getElementById('rpt-weekly-section').style.display = 'none';
+  document.getElementById('rpt-weekly-btn').style.opacity = '1';
 
   document.getElementById('rpt-stats').innerHTML = `
     <div class="col-6 col-md"><div class="stat-card card-income" style="padding:16px 18px">
@@ -1802,9 +1822,101 @@ function cancelRptEditDesc() {
   if (rptData) renderRptTransactions(rptData);
 }
 
+function toggleWeekly() {
+  rptWeeklyVisible = !rptWeeklyVisible;
+  const section = document.getElementById('rpt-weekly-section');
+  const btn = document.getElementById('rpt-weekly-btn');
+  if (rptWeeklyVisible) {
+    section.style.display = 'block';
+    btn.style.background = '#1D4ED8';
+    if (!rptWeeklyChart && rptData) renderRptWeekly(rptData);
+    section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else {
+    section.style.display = 'none';
+    btn.style.background = '#3B82F6';
+  }
+}
+
+function renderRptWeekly(d) {
+  const weekTotals = {};
+  const weekRanges = {};
+  const daysInMonth = new Date(d.month.year, d.month.month, 0).getDate();
+
+  d.expenses.forEach(e => {
+    if (e.category === 'savings') return;
+    const day = parseInt((e.expense_date || '').split('-')[2], 10);
+    if (!day) return;
+    const week = Math.ceil(day / 7);
+    weekTotals[week] = (weekTotals[week] || 0) + e.amount;
+    if (!weekRanges[week]) {
+      const wStart = (week - 1) * 7 + 1;
+      const wEnd = Math.min(week * 7, daysInMonth);
+      weekRanges[week] = `${wStart}–${wEnd} ${d.month.name.slice(0, 3)}`;
+    }
+  });
+
+  const weeks = Object.keys(weekTotals).map(Number).sort((a, b) => a - b);
+  const labels = weeks.map(w => weekRanges[w]);
+  const values = weeks.map(w => weekTotals[w]);
+
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const gridColor = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const tickColor = dark ? '#94A3B8' : '#64748B';
+
+  if (rptWeeklyChart) rptWeeklyChart.destroy();
+  if (!values.length) {
+    document.getElementById('rpt-weekly-section').querySelector('canvas').getContext('2d')
+      .fillText('No expense data', 10, 20);
+    return;
+  }
+
+  rptWeeklyChart = new Chart(document.getElementById('rptWeekly'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Spend',
+        data: values,
+        backgroundColor: weeks.map((_, i) => {
+          const maxI = values.indexOf(Math.max(...values));
+          return i === maxI ? '#EF4444' : '#3B82F6';
+        }),
+        borderRadius: 7,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => ` AED ${ctx.raw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: gridColor }, ticks: { color: tickColor, font: { size: 12 } } },
+        y: {
+          beginAtZero: true,
+          grid: { color: gridColor },
+          ticks: {
+            color: tickColor,
+            callback: v => 'AED ' + v.toLocaleString()
+          }
+        }
+      }
+    }
+  });
+}
+
 function closeReportDetail() {
   document.getElementById('report-detail').style.display = 'none';
   if (rptPieChart) { rptPieChart.destroy(); rptPieChart = null; }
+  if (rptWeeklyChart) { rptWeeklyChart.destroy(); rptWeeklyChart = null; }
+  document.getElementById('rpt-weekly-section').style.display = 'none';
+  rptWeeklyVisible = false;
   rptData = null;
 }
 
