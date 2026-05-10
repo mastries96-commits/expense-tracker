@@ -1618,6 +1618,8 @@ let rptData = null;
 let rptPieChart = null;
 let rptWeeklyChart = null;
 let rptWeeklyVisible = false;
+let rptWeeklyWeeks = [];
+let rptWeeklyLabels = [];
 
 async function loadReports() {
   const months = await fetchJSON('/api/months');
@@ -1859,6 +1861,10 @@ function renderRptWeekly(d) {
   const labels = weeks.map(w => weekRanges[w]);
   const values = weeks.map(w => weekTotals[w]);
 
+  // Store for the native click handler
+  rptWeeklyWeeks = weeks;
+  rptWeeklyLabels = labels;
+
   const dark = document.documentElement.getAttribute('data-theme') === 'dark';
   const gridColor = dark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
   const tickColor = dark ? '#94A3B8' : '#64748B';
@@ -1870,7 +1876,9 @@ function renderRptWeekly(d) {
     return;
   }
 
-  rptWeeklyChart = new Chart(document.getElementById('rptWeekly'), {
+  const canvas = document.getElementById('rptWeekly');
+
+  rptWeeklyChart = new Chart(canvas, {
     type: 'bar',
     data: {
       labels,
@@ -1888,20 +1896,12 @@ function renderRptWeekly(d) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      onClick: (evt, elements) => {
-        if (!elements.length) return;
-        const idx = elements[0].index;
-        filterRptByWeek(weeks[idx], labels[idx]);
-      },
-      onHover: (evt, elements) => {
-        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
-      },
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
             label: ctx => ` AED ${ctx.raw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            afterLabel: () => 'Click to filter transactions'
+            afterLabel: () => '👆 Tap to filter transactions'
           }
         }
       },
@@ -1910,14 +1910,23 @@ function renderRptWeekly(d) {
         y: {
           beginAtZero: true,
           grid: { color: gridColor },
-          ticks: {
-            color: tickColor,
-            callback: v => 'AED ' + v.toLocaleString()
-          }
+          ticks: { color: tickColor, callback: v => 'AED ' + v.toLocaleString() }
         }
       }
     }
   });
+
+  // Native canvas events — reliable across all Chart.js versions
+  canvas.style.cursor = 'default';
+  canvas.onclick = function(evt) {
+    const hits = rptWeeklyChart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, false);
+    if (!hits.length) return;
+    filterRptByWeek(rptWeeklyWeeks[hits[0].index], rptWeeklyLabels[hits[0].index]);
+  };
+  canvas.onmousemove = function(evt) {
+    const hits = rptWeeklyChart.getElementsAtEventForMode(evt, 'nearest', { intersect: true }, false);
+    canvas.style.cursor = hits.length ? 'pointer' : 'default';
+  };
 }
 
 function filterRptByWeek(week, label) {
