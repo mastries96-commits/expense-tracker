@@ -1751,42 +1751,101 @@ function renderRptCategories(d) {
 }
 
 function renderRptTransactions(d) {
-  const allTx = [
-    ...d.fixed_costs.map(fc => ({ type:'fixed', id:null, date:'—', category:fc.name, amount:fc.amount, description:'Monthly fixed cost' })),
-    ...d.expenses.map(e => ({ type:'variable', id:e.id, date:e.expense_date, category:e.category, amount:e.amount, description:e.description||'' }))
-  ];
-  if (!allTx.length) {
-    document.getElementById('rpt-transactions').innerHTML = '<div class="empty-state"><i class="fa-solid fa-receipt"></i><p>No transactions</p></div>';
+  const container = document.getElementById('rpt-transactions');
+
+  // Build groups: fixed costs first, then variable categories sorted by total desc
+  const groups = [];
+
+  if (d.fixed_costs && d.fixed_costs.length) {
+    groups.push({
+      key: '__fixed__',
+      label: 'Fixed Costs',
+      icon: 'thumbtack',
+      color: '#F59E0B',
+      total: d.fixed_costs.reduce((s, fc) => s + fc.amount, 0),
+      rows: d.fixed_costs.map(fc => ({ type:'fixed', id:null, date:'—', category:fc.name, amount:fc.amount, description:'Monthly fixed cost' }))
+    });
+  }
+
+  const catMap = {};
+  (d.expenses || []).forEach(e => {
+    if (!catMap[e.category]) catMap[e.category] = [];
+    catMap[e.category].push(e);
+  });
+
+  Object.entries(catMap)
+    .sort((a, b) => b[1].reduce((s,e)=>s+e.amount,0) - a[1].reduce((s,e)=>s+e.amount,0))
+    .forEach(([cat, items]) => {
+      const isSav = cat === 'savings';
+      groups.push({
+        key: cat,
+        label: cat.charAt(0).toUpperCase() + cat.slice(1),
+        icon: catIcon(cat),
+        color: isSav ? '#14B8A6' : '#EF4444',
+        total: items.reduce((s,e)=>s+e.amount, 0),
+        rows: items.map(e => ({ type:'variable', id:e.id, date:e.expense_date, category:e.category, amount:e.amount, description:e.description||'' }))
+      });
+    });
+
+  if (!groups.length) {
+    container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-receipt"></i><p>No transactions</p></div>';
     return;
   }
-  const thStyle = 'font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:10px 24px;background:#F8FAFC;text-align:left;border-bottom:1px solid var(--border)';
-  const tbody = allTx.map(t => {
-    const isSav = t.category.toLowerCase() === 'savings';
-    const color = t.type==='fixed' ? '#F59E0B' : isSav ? '#14B8A6' : '#EF4444';
-    const bg    = t.type==='fixed' ? 'rgba(245,158,11,.1)' : isSav ? 'rgba(20,184,166,.1)' : 'rgba(239,68,68,.1)';
-    const safeDesc = (t.description||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-    const actions = t.type === 'variable' ? `
-      <button class="action-btn edit-btn" onclick="startRptEditDesc(this,${t.id},'${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
-      <button class="action-btn del-btn" onclick="deleteRptExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>` : '';
-    return `<tr>
-      <td style="color:var(--muted);font-size:.8rem;padding:10px 24px">${t.date}</td>
-      <td style="padding:10px 24px"><span class="cat-badge" style="background:${bg};color:${color}">${t.category.charAt(0).toUpperCase()+t.category.slice(1)}</span></td>
-      <td style="font-weight:600;color:${color};padding:10px 24px">${AED(t.amount)}</td>
-      <td class="desc-cell" style="color:var(--muted);font-size:.8rem;padding:10px 24px;min-width:120px">${t.description||'—'}</td>
-      <td style="padding:10px 14px;white-space:nowrap;text-align:right">${actions}</td>
-    </tr>`;
+
+  const thStyle = 'font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:7px 20px;background:var(--surface);text-align:left;border-bottom:1px solid var(--border)';
+
+  container.innerHTML = groups.map(g => {
+    const rows = g.rows.map(t => {
+      const safeDesc = (t.description||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      const actions = t.type === 'variable' ? `
+        <button class="action-btn edit-btn" onclick="startRptEditDesc(this,${t.id},'${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+        <button class="action-btn del-btn" onclick="deleteRptExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>` : '';
+      return `<tr>
+        <td style="color:var(--muted);font-size:.8rem;padding:9px 20px">${t.date}</td>
+        <td style="font-weight:600;color:${g.color};padding:9px 20px">${AED(t.amount)}</td>
+        <td class="desc-cell" style="color:var(--muted);font-size:.8rem;padding:9px 20px">${t.description||'—'}</td>
+        <td style="padding:9px 12px;white-space:nowrap;text-align:right">${actions}</td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <div style="border-bottom:1px solid var(--border)">
+        <div onclick="toggleTxGroup(this)"
+             style="display:flex;justify-content:space-between;align-items:center;padding:13px 20px;cursor:pointer;user-select:none;transition:background .15s"
+             onmouseover="this.style.background='rgba(0,0,0,.025)'" onmouseout="this.style.background='transparent'">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:28px;height:28px;border-radius:8px;background:${g.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="fa-solid fa-${g.icon}" style="font-size:.72rem;color:${g.color}"></i>
+            </span>
+            <span style="font-weight:600;font-size:.88rem">${g.label}</span>
+            <span style="font-size:.7rem;background:var(--border);color:var(--muted);padding:1px 8px;border-radius:10px;font-weight:500">${g.rows.length}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-weight:700;color:${g.color};font-size:.9rem">${AED(g.total)}</span>
+            <i class="fa-solid fa-chevron-right" style="font-size:.7rem;color:var(--muted);transition:transform .2s"></i>
+          </div>
+        </div>
+        <div style="display:none">
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr>
+              <th style="${thStyle}">Date</th>
+              <th style="${thStyle}">Amount</th>
+              <th style="${thStyle}">Description</th>
+              <th style="${thStyle}"></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
   }).join('');
-  document.getElementById('rpt-transactions').innerHTML = `
-    <table style="width:100%;border-collapse:collapse">
-      <thead><tr>
-        <th style="${thStyle}">Date</th>
-        <th style="${thStyle}">Category</th>
-        <th style="${thStyle}">Amount</th>
-        <th style="${thStyle}">Description</th>
-        <th style="${thStyle}"></th>
-      </tr></thead>
-      <tbody>${tbody}</tbody>
-    </table>`;
+}
+
+function toggleTxGroup(header) {
+  const body = header.nextElementSibling;
+  const chevron = header.querySelector('.fa-chevron-right');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  chevron.style.transform = isOpen ? '' : 'rotate(90deg)';
 }
 
 async function deleteRptExpense(expenseId) {
