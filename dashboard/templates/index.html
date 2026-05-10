@@ -813,7 +813,7 @@
       </div>
 
       <div class="table-card">
-        <div class="table-header">
+        <div class="table-header" id="rpt-tx-header">
           <h6><i class="fa-solid fa-list me-2"></i>All Transactions</h6>
         </div>
         <div id="rpt-transactions"></div>
@@ -1888,11 +1888,20 @@ function renderRptWeekly(d) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      onClick: (evt, elements) => {
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        filterRptByWeek(weeks[idx], labels[idx]);
+      },
+      onHover: (evt, elements) => {
+        evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: ctx => ` AED ${ctx.raw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+            label: ctx => ` AED ${ctx.raw.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+            afterLabel: () => 'Click to filter transactions'
           }
         }
       },
@@ -1911,11 +1920,48 @@ function renderRptWeekly(d) {
   });
 }
 
+function filterRptByWeek(week, label) {
+  if (!rptData) return;
+  const wStart = (week - 1) * 7 + 1;
+  const daysInMonth = new Date(rptData.month.year, rptData.month.month, 0).getDate();
+  const wEnd = Math.min(week * 7, daysInMonth);
+
+  const filtered = {
+    ...rptData,
+    fixed_costs: [],
+    expenses: rptData.expenses.filter(e => {
+      const day = parseInt((e.expense_date || '').split('-')[2], 10);
+      return day >= wStart && day <= wEnd;
+    })
+  };
+
+  document.getElementById('rpt-tx-header').innerHTML = `
+    <h6 style="margin:0">
+      <i class="fa-solid fa-calendar-week me-2" style="color:#3B82F6"></i>
+      Week ${week} <span style="font-size:.78rem;font-weight:400;color:var(--muted)">(${label})</span>
+    </h6>
+    <button onclick="clearWeekFilter()" style="background:none;border:1px solid var(--border);border-radius:8px;padding:4px 12px;font-size:.75rem;color:var(--muted);cursor:pointer">
+      Show All
+    </button>`;
+
+  renderRptTransactions(filtered);
+  document.getElementById('rpt-transactions').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function clearWeekFilter() {
+  if (!rptData) return;
+  document.getElementById('rpt-tx-header').innerHTML =
+    `<h6><i class="fa-solid fa-list me-2"></i>All Transactions</h6>`;
+  renderRptTransactions(rptData);
+}
+
 function closeReportDetail() {
   document.getElementById('report-detail').style.display = 'none';
   if (rptPieChart) { rptPieChart.destroy(); rptPieChart = null; }
   if (rptWeeklyChart) { rptWeeklyChart.destroy(); rptWeeklyChart = null; }
   document.getElementById('rpt-weekly-section').style.display = 'none';
+  document.getElementById('rpt-tx-header').innerHTML =
+    `<h6><i class="fa-solid fa-list me-2"></i>All Transactions</h6>`;
   rptWeeklyVisible = false;
   rptData = null;
 }
