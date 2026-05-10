@@ -1150,55 +1150,116 @@ function renderTransactions(d) {
     allTransactions.push({ id:e.id, date:e.expense_date, category:e.category, amount:e.amount, description:e.description||'' });
   });
 
-  const rows = catFilter
-    ? allTransactions.filter(t => t.category.toLowerCase() === catFilter)
-    : allTransactions;
-
-  const filterBar = catFilter ? `
-    <div style="padding:9px 20px;background:rgba(59,130,246,.07);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-      <span style="font-size:.82rem;color:var(--text)">
-        <i class="fa-solid fa-filter me-2" style="color:var(--primary);font-size:.75rem"></i>
-        <strong>${catFilter.charAt(0).toUpperCase()+catFilter.slice(1)}</strong>
-        &nbsp;·&nbsp; ${rows.length} transaction${rows.length!==1?'s':''}
-      </span>
-      <button onclick="clearCatFilter()" style="background:none;border:none;color:var(--primary);font-size:.8rem;font-weight:600;cursor:pointer;padding:0">
-        Show all &times;
-      </button>
-    </div>` : '';
-
-  if (!rows.length) {
-    wrap.innerHTML = filterBar + `<div class="empty-state"><i class="fa-solid fa-receipt"></i><p>${catFilter ? 'No '+catFilter.charAt(0).toUpperCase()+catFilter.slice(1)+' transactions recorded.' : 'No expenses yet — add via Telegram.'}</p></div>`;
+  // ── Category filter (from pie chart click) — flat list with filter bar ──────
+  if (catFilter) {
+    const rows = allTransactions.filter(t => t.category.toLowerCase() === catFilter);
+    const isSav = catFilter === 'savings';
+    const color = isSav ? '#14B8A6' : '#EF4444';
+    const filterBar = `
+      <div style="padding:10px 20px;background:rgba(59,130,246,.07);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.82rem;color:var(--text)">
+          <i class="fa-solid fa-${catIcon(catFilter)} me-2" style="color:${color};font-size:.75rem"></i>
+          <strong>${catFilter.charAt(0).toUpperCase()+catFilter.slice(1)}</strong>
+          <span style="color:var(--muted)">&nbsp;· ${rows.length} item${rows.length!==1?'s':''} · ${AED(rows.reduce((s,t)=>s+t.amount,0))}</span>
+        </span>
+        <button onclick="clearCatFilter()" style="background:none;border:none;color:var(--primary);font-size:.8rem;font-weight:600;cursor:pointer;padding:0">
+          Show all ×
+        </button>
+      </div>`;
+    if (!rows.length) {
+      wrap.innerHTML = filterBar + `<div class="empty-state"><i class="fa-solid fa-receipt"></i><p>No ${catFilter.charAt(0).toUpperCase()+catFilter.slice(1)} transactions yet.</p></div>`;
+      return;
+    }
+    const thStyle = 'font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:7px 20px;background:var(--surface);text-align:left;border-bottom:1px solid var(--border)';
+    const tbody = rows.map(t => {
+      const safeDesc = (t.description||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      return `<tr>
+        <td style="color:var(--muted);font-size:.8rem;padding:9px 20px">${t.date}</td>
+        <td style="font-weight:600;color:${color};padding:9px 20px">${AED(t.amount)}</td>
+        <td class="desc-cell" style="color:var(--muted);font-size:.82rem;padding:9px 20px">${t.description||'—'}</td>
+        <td style="white-space:nowrap;text-align:right;padding:9px 12px">
+          <button class="action-btn edit-btn" onclick="startEditDesc(this,${t.id},'${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="action-btn del-btn" onclick="deleteExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+    wrap.innerHTML = filterBar + `
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="${thStyle}">Date</th><th style="${thStyle}">Amount</th>
+          <th style="${thStyle}">Description</th><th style="${thStyle}"></th>
+        </tr></thead>
+        <tbody>${tbody}</tbody>
+      </table>`;
     return;
   }
 
-  const tbody = rows.map(t => {
-    const icon = catIcon(t.category);
-    const isSav = t.category.toLowerCase() === 'savings';
-    const color   = isSav ? '#14B8A6' : '#EF4444';
-    const bgColor = isSav ? 'rgba(20,184,166,.1)' : 'rgba(239,68,68,.1)';
-    const safeDesc = (t.description||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
-    return `<tr>
-      <td style="color:var(--muted);font-size:.8rem">${t.date}</td>
-      <td><span class="cat-badge" style="background:${bgColor};color:${color}">
-        <i class="fa-solid fa-${icon} me-1" style="font-size:.65rem"></i>
-        ${t.category.charAt(0).toUpperCase()+t.category.slice(1)}
-      </span></td>
-      <td class="amount-cell" style="color:${color}">${AED(t.amount)}</td>
-      <td class="desc-cell" style="color:var(--muted);font-size:.82rem;min-width:120px">${t.description||'—'}</td>
-      <td style="white-space:nowrap;text-align:right;padding-right:14px">
-        <button class="action-btn edit-btn" onclick="startEditDesc(this,${t.id},'${safeDesc}')" title="Edit description"><i class="fa-solid fa-pen"></i></button>
-        <button class="action-btn del-btn" onclick="deleteExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
-      </td>
-    </tr>`;
-  }).join('');
+  // ── Grouped accordion view ────────────────────────────────────────────────────
+  if (!allTransactions.length) {
+    wrap.innerHTML = '<div class="empty-state"><i class="fa-solid fa-receipt"></i><p>No expenses yet — add via Telegram.</p></div>';
+    return;
+  }
 
-  wrap.innerHTML = filterBar + `
-    <table>
-      <thead><tr>
-        <th>Date</th><th>Category</th><th>Amount</th><th>Description</th><th></th>
-      </tr></thead>
-      <tbody>${tbody}</tbody>
-    </table>`;
+  const catMap = {};
+  allTransactions.forEach(t => {
+    if (!catMap[t.category]) catMap[t.category] = [];
+    catMap[t.category].push(t);
+  });
+
+  const groups = Object.entries(catMap)
+    .sort((a, b) => b[1].reduce((s,t)=>s+t.amount,0) - a[1].reduce((s,t)=>s+t.amount,0));
+
+  const thStyle = 'font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:7px 20px;background:var(--surface);text-align:left;border-bottom:1px solid var(--border)';
+
+  wrap.innerHTML = groups.map(([cat, items]) => {
+    const isSav = cat === 'savings';
+    const color = isSav ? '#14B8A6' : '#EF4444';
+    const total = items.reduce((s,t) => s + t.amount, 0);
+    const icon = catIcon(cat);
+
+    const rows = items.map(t => {
+      const safeDesc = (t.description||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      return `<tr>
+        <td style="color:var(--muted);font-size:.8rem;padding:9px 20px">${t.date}</td>
+        <td style="font-weight:600;color:${color};padding:9px 20px">${AED(t.amount)}</td>
+        <td class="desc-cell" style="color:var(--muted);font-size:.82rem;padding:9px 20px">${t.description||'—'}</td>
+        <td style="white-space:nowrap;text-align:right;padding:9px 12px">
+          <button class="action-btn edit-btn" onclick="startEditDesc(this,${t.id},'${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="action-btn del-btn" onclick="deleteExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+
+    return `
+      <div style="border-bottom:1px solid var(--border)">
+        <div onclick="toggleTxGroup(this)"
+             style="display:flex;justify-content:space-between;align-items:center;padding:13px 20px;cursor:pointer;user-select:none;transition:background .15s"
+             onmouseover="this.style.background='rgba(128,128,128,.06)'" onmouseout="this.style.background=''">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:30px;height:30px;border-radius:9px;background:${color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="fa-solid fa-${icon}" style="font-size:.75rem;color:${color}"></i>
+            </span>
+            <span style="font-weight:600;font-size:.9rem">${cat.charAt(0).toUpperCase()+cat.slice(1)}</span>
+            <span style="font-size:.7rem;background:var(--border);color:var(--muted);padding:1px 8px;border-radius:10px;font-weight:500">${items.length}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px">
+            <span style="font-weight:700;color:${color};font-size:.9rem">${AED(total)}</span>
+            <i class="fa-solid fa-chevron-right" style="font-size:.7rem;color:var(--muted);transition:transform .2s"></i>
+          </div>
+        </div>
+        <div style="display:none">
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr>
+              <th style="${thStyle}">Date</th>
+              <th style="${thStyle}">Amount</th>
+              <th style="${thStyle}">Description</th>
+              <th style="${thStyle}"></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 // ── Chat ─────────────────────────────────────────────────────────────────────
