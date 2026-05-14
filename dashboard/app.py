@@ -235,10 +235,11 @@ def _send_monthly_report(prev_month_id: int):
 
     import json as _json
     import urllib.request as _ur
+    import urllib.error as _ue
 
     api_key = os.environ.get("RESEND_API_KEY", "")
     if not api_key:
-        return
+        raise RuntimeError("RESEND_API_KEY not set")
 
     payload = _json.dumps({
         "from":    "Expense Tracker <onboarding@resend.dev>",
@@ -255,9 +256,15 @@ def _send_monthly_report(prev_month_id: int):
     )
     try:
         with _ur.urlopen(req, timeout=15) as r:
-            app.logger.info("Monthly report sent: %s %s → %s", month_name, year, r.status)
+            resp_body = r.read().decode()
+            app.logger.info("Monthly report sent: %s %s → %s %s", month_name, year, r.status, resp_body)
+    except _ue.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")
+        app.logger.error("Resend API %s: %s", e.code, body)
+        raise RuntimeError(f"Resend {e.code}: {body}") from e
     except Exception as e:
         app.logger.error("Monthly report email failed: %s", e)
+        raise
 
 
 # ── Page routes ───────────────────────────────────────────────────────────────
