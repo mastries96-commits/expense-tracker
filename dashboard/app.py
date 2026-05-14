@@ -121,10 +121,8 @@ _REPORT_EMAIL = "masoodhusain.bh@gmail.com"
 
 
 def _send_monthly_report(prev_month_id: int):
-    """Build and email the closed month's statement. Skips silently if SMTP not configured."""
-    gmail_user = os.environ.get("GMAIL_USER", "")
-    gmail_pass = os.environ.get("GMAIL_APP_PASSWORD", "")
-    if not gmail_user or not gmail_pass:
+    """Build and email the closed month's statement. Skips silently if RESEND_API_KEY not set."""
+    if not os.environ.get("RESEND_API_KEY"):
         return
 
     data = db.get_month_details(prev_month_id)
@@ -235,22 +233,29 @@ def _send_monthly_report(prev_month_id: int):
 </td></tr></table>
 </body></html>"""
 
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
+    import json as _json
+    import urllib.request as _ur
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"{month_name} {year} — Expense Statement"
-    msg["From"]    = f"Expense Tracker <{gmail_user}>"
-    msg["To"]      = _REPORT_EMAIL
-    msg.attach(MIMEText(html, "html"))
+    api_key = os.environ.get("RESEND_API_KEY", "")
+    if not api_key:
+        return
 
+    payload = _json.dumps({
+        "from":    "Expense Tracker <onboarding@resend.dev>",
+        "to":      [_REPORT_EMAIL],
+        "subject": f"{month_name} {year} — Expense Statement",
+        "html":    html,
+    }).encode()
+
+    req = _ur.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        method="POST",
+    )
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as s:
-            s.starttls()
-            s.login(gmail_user, gmail_pass)
-            s.sendmail(gmail_user, _REPORT_EMAIL, msg.as_string())
-        app.logger.info("Monthly report sent: %s %s", month_name, year)
+        with _ur.urlopen(req, timeout=15) as r:
+            app.logger.info("Monthly report sent: %s %s → %s", month_name, year, r.status)
     except Exception as e:
         app.logger.error("Monthly report email failed: %s", e)
 
