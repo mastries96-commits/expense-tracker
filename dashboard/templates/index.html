@@ -750,6 +750,14 @@
       </div>
     </div>
 
+    <!-- Daily spending chart -->
+    <div class="chart-card mb-4">
+      <h6><i class="fa-solid fa-calendar-days me-2"></i>Daily Spending — <span id="daily-chart-month" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></h6>
+      <div style="height:200px;position:relative">
+        <canvas id="dailyChart" style="cursor:pointer"></canvas>
+      </div>
+    </div>
+
     <!-- Stat cards -->
     <div class="row g-3 mb-4" id="stat-cards">
       <div class="col-sm-6 col-xl">
@@ -801,14 +809,6 @@
         <span style="font-weight:700;color:var(--fixed);font-size:.9rem" id="fc-total-label">—</span>
       </div>
       <div id="fixed-costs-pills" class="d-flex gap-2 flex-wrap"></div>
-    </div>
-
-    <!-- Daily spending chart -->
-    <div class="chart-card mb-3">
-      <h6><i class="fa-solid fa-calendar-days me-2"></i>Daily Spending — <span id="daily-chart-month" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></h6>
-      <div style="height:200px;position:relative">
-        <canvas id="dailyChart"></canvas>
-      </div>
     </div>
 
     <!-- Variable Expenses table -->
@@ -1227,10 +1227,13 @@ function renderEmpty() {
 }
 
 // ── Category filter ──────────────────────────────────────────────────────────
-let catFilter = null;
+let catFilter  = null;
+let dateFilter = null;
 
 function filterByCategory(rawCat) {
-  catFilter = catFilter === rawCat ? null : rawCat;
+  catFilter  = catFilter === rawCat ? null : rawCat;
+  dateFilter = null;
+  if (dailyChart) { dailyChart.data.datasets[0].backgroundColor = dailyChart.data.datasets[0].backgroundColor; dailyChart.update('none'); }
   document.querySelectorAll('.legend-item').forEach(el =>
     el.classList.toggle('legend-active', el.dataset.cat === catFilter)
   );
@@ -1244,6 +1247,23 @@ function filterByCategory(rawCat) {
 function clearCatFilter() {
   catFilter = null;
   document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('legend-active'));
+  if (currentData) renderTransactions(currentData);
+}
+
+function clearDateFilter() {
+  dateFilter = null;
+  if (dailyChart && currentData) {
+    const m = currentData.month;
+    const daysInMonth = new Date(m.year, m.month, 0).getDate();
+    const labels = Array.from({length: daysInMonth}, (_, i) => i + 1);
+    const todayDay = new Date().getDate();
+    dailyChart.data.datasets[0].backgroundColor = labels.map(day => {
+      if (day === todayDay) return 'rgba(0,201,167,.75)';
+      const vals = dailyChart.data.datasets[0].data;
+      return vals[day-1] > 0 ? 'rgba(88,166,255,.65)' : 'rgba(99,110,123,.18)';
+    });
+    dailyChart.update('none');
+  }
   if (currentData) renderTransactions(currentData);
 }
 
@@ -1415,7 +1435,18 @@ function renderDailyChart(d) {
 
   const labels = Array.from({length: daysInMonth}, (_, i) => i + 1);
   const values = labels.map(i => daily[i]);
-  const today  = new Date().getDate();
+  const todayDay = new Date().getDate();
+
+  function barColors() {
+    return labels.map(day => {
+      const mm = String(m.month).padStart(2,'0'), dd = String(day).padStart(2,'0');
+      const ds = `${m.year}-${mm}-${dd}`;
+      if (dateFilter === ds)   return 'rgba(0,201,167,1)';
+      if (day === todayDay)    return 'rgba(0,201,167,.75)';
+      if (values[day-1] > 0)  return 'rgba(88,166,255,.65)';
+      return 'rgba(99,110,123,.18)';
+    });
+  }
 
   if (dailyChart) dailyChart.destroy();
   dailyChart = new Chart(document.getElementById('dailyChart'), {
@@ -1425,10 +1456,7 @@ function renderDailyChart(d) {
       datasets: [{
         label: 'Spending',
         data: values,
-        backgroundColor: labels.map(day =>
-          day === today ? 'rgba(16,185,129,.85)' :
-          values[day-1] > 0 ? 'rgba(59,130,246,.65)' : 'rgba(226,232,240,.4)'
-        ),
+        backgroundColor: barColors(),
         borderRadius: 3,
         borderSkipped: false,
       }]
@@ -1444,6 +1472,21 @@ function renderDailyChart(d) {
           }
         }
       },
+      onClick: (e, elements) => {
+        if (!elements.length) return;
+        const day = labels[elements[0].index];
+        const mm  = String(m.month).padStart(2,'0');
+        const dd  = String(day).padStart(2,'0');
+        const ds  = `${m.year}-${mm}-${dd}`;
+        dateFilter  = dateFilter === ds ? null : ds;
+        catFilter   = null;
+        document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('legend-active'));
+        dailyChart.data.datasets[0].backgroundColor = barColors();
+        dailyChart.update('none');
+        if (currentData) renderTransactions(currentData);
+        document.querySelector('#view-current .table-card')
+          .scrollIntoView({ behavior: 'smooth', block: 'start' });
+      },
       scales: {
         x: {
           grid: { display: false },
@@ -1452,7 +1495,7 @@ function renderDailyChart(d) {
         y: {
           beginAtZero: true,
           ticks: { callback: v => v === 0 ? '' : 'AED ' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v), font: { size: 9 } },
-          grid: { color: 'rgba(0,0,0,.04)' }
+          grid: { color: 'rgba(201,209,217,.07)' }
         }
       }
     }
@@ -1467,6 +1510,52 @@ function renderTransactions(d) {
   d.expenses.slice().reverse().forEach(e => {
     allTransactions.push({ id:e.id, date:e.expense_date, category:e.category, amount:e.amount, description:e.description||'' });
   });
+
+  // ── Date filter (from daily chart click) ─────────────────────────────────────
+  if (dateFilter) {
+    const rows  = allTransactions.filter(t => t.date === dateFilter);
+    const total = rows.reduce((s,t) => s + t.amount, 0);
+    const label = new Date(dateFilter + 'T00:00:00').toLocaleDateString('en-AE', { weekday:'short', day:'numeric', month:'long', year:'numeric' });
+    const filterBar = `
+      <div style="padding:10px 20px;background:rgba(0,201,167,.07);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.82rem;color:var(--text)">
+          <i class="fa-solid fa-calendar-day me-2" style="color:var(--primary);font-size:.75rem"></i>
+          <strong>${label}</strong>
+          <span style="color:var(--muted)">&nbsp;· ${rows.length} item${rows.length!==1?'s':''} · ${AED(total)}</span>
+        </span>
+        <button onclick="clearDateFilter()" style="background:none;border:none;color:var(--primary);font-size:.8rem;font-weight:600;cursor:pointer;padding:0">
+          Show all ×
+        </button>
+      </div>`;
+    if (!rows.length) {
+      wrap.innerHTML = filterBar + `<div class="empty-state"><i class="fa-solid fa-receipt"></i><p>No expenses on this day.</p></div>`;
+      return;
+    }
+    const thStyle = 'font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:7px 20px;background:var(--surface);text-align:left;border-bottom:1px solid var(--border)';
+    const tbody = rows.map(t => {
+      const safeDesc = (t.description||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const safeCat  = t.category.replace(/'/g,"\\'");
+      const color    = t.category === 'savings' ? 'var(--savings)' : 'var(--expense)';
+      return `<tr>
+        <td style="font-size:.8rem;color:var(--muted);padding:9px 20px">${t.category}</td>
+        <td style="font-weight:600;color:${color};padding:9px 20px">${AED(t.amount)}</td>
+        <td style="color:var(--muted);font-size:.82rem;padding:9px 20px">${t.description||'—'}</td>
+        <td style="white-space:nowrap;text-align:right;padding:9px 12px">
+          <button class="action-btn edit-btn" onclick="openEditModal(${t.id},'${safeCat}',${t.amount},'${t.date}','${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="action-btn del-btn" onclick="deleteExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+    wrap.innerHTML = filterBar + `
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="${thStyle}">Category</th><th style="${thStyle}">Amount</th>
+          <th style="${thStyle}">Description</th><th style="${thStyle}"></th>
+        </tr></thead>
+        <tbody>${tbody}</tbody>
+      </table>`;
+    return;
+  }
 
   // ── Category filter (from pie chart click) — flat list with filter bar ──────
   if (catFilter) {
