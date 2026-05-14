@@ -237,31 +237,31 @@ def _send_monthly_report(prev_month_id: int):
     import urllib.request as _ur
     import urllib.error as _ue
 
-    api_key = os.environ.get("RESEND_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("RESEND_API_KEY not set")
+    api_key  = os.environ.get("SENDGRID_API_KEY", "")
+    from_email = os.environ.get("SENDGRID_FROM", "")
+    if not api_key or not from_email:
+        raise RuntimeError("SENDGRID_API_KEY or SENDGRID_FROM not set")
 
     payload = _json.dumps({
-        "from":    "Expense Tracker <onboarding@resend.dev>",
-        "to":      [_REPORT_EMAIL],
+        "personalizations": [{"to": [{"email": _REPORT_EMAIL}]}],
+        "from": {"email": from_email, "name": "Expense Tracker"},
         "subject": f"{month_name} {year} — Expense Statement",
-        "html":    html,
+        "content": [{"type": "text/html", "value": html}],
     }).encode()
 
     req = _ur.Request(
-        "https://api.resend.com/emails",
+        "https://api.sendgrid.com/v3/mail/send",
         data=payload,
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         method="POST",
     )
     try:
         with _ur.urlopen(req, timeout=15) as r:
-            resp_body = r.read().decode()
-            app.logger.info("Monthly report sent: %s %s → %s %s", month_name, year, r.status, resp_body)
+            app.logger.info("Monthly report sent: %s %s → HTTP %s", month_name, year, r.status)
     except _ue.HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")
-        app.logger.error("Resend API %s: %s", e.code, body)
-        raise RuntimeError(f"Resend {e.code}: {body}") from e
+        app.logger.error("SendGrid %s: %s", e.code, body)
+        raise RuntimeError(f"SendGrid {e.code}: {body}") from e
     except Exception as e:
         app.logger.error("Monthly report email failed: %s", e)
         raise
