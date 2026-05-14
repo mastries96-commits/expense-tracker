@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, Response, jsonify, render_template, request, redirect, url_for, session, send_from_directory
 
-from config import DASHBOARD_PORT, FIXED_COSTS, DASHBOARD_PASSWORD, SECRET_KEY, CATEGORY_ALIASES, EXPENSE_CATEGORIES
+from config import DASHBOARD_PORT, FIXED_COSTS, DASHBOARD_PASSWORD, DASHBOARD_USERNAME, SECRET_KEY, CATEGORY_ALIASES, EXPENSE_CATEGORIES
 from database import Database
 
 app = Flask(__name__)
@@ -37,10 +37,11 @@ def login():
         return redirect(url_for('index'))
     error = None
     if request.method == 'POST':
-        if request.form.get('password') == DASHBOARD_PASSWORD:
+        if (request.form.get('username') == DASHBOARD_USERNAME and
+                request.form.get('password') == DASHBOARD_PASSWORD):
             session['authenticated'] = True
             return redirect(url_for('index'))
-        error = 'Incorrect password. Please try again.'
+        error = 'Invalid username or password.'
     return render_template('login.html', error=error)
 
 

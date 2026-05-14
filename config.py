@@ -112,6 +112,7 @@ CATEGORY_ALIASES = {
 
 DB_PATH            = os.environ.get("DB_PATH", "expenses.db")
 DASHBOARD_PORT     = int(os.environ.get("PORT", 5000))
+DASHBOARD_USERNAME = os.environ.get("DASHBOARD_USERNAME", "MAS")
 DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "9693")
 SECRET_KEY         = os.environ.get("SECRET_KEY", "expense-tracker-secret")
 TURSO_URL          = os.environ.get("TURSO_URL", "")

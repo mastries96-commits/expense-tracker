@@ -107,7 +107,7 @@
       <i class="fa-solid fa-wallet"></i>
     </div>
     <h1 class="login-title">Expense Tracker</h1>
-    <p class="login-sub">Enter your password to access the dashboard</p>
+    <p class="login-sub">Sign in to access the dashboard</p>
 
     {% if error %}
     <div class="error-box">
@@ -117,6 +117,18 @@
     {% endif %}
 
     <form method="POST" action="/login" autocomplete="off">
+      <div style="margin-bottom:16px;">
+        <label class="field-label" for="username-input">Username</label>
+        <input
+          class="pw-input"
+          type="text"
+          name="username"
+          id="username-input"
+          placeholder="Enter username"
+          autofocus
+          autocomplete="username"
+        />
+      </div>
       <label class="field-label" for="pw-input">Password</label>
       <div class="pw-wrap">
         <input
@@ -125,7 +137,6 @@
           name="password"
           id="pw-input"
           placeholder="Enter password"
-          autofocus
           autocomplete="current-password"
         />
         <button type="button" class="pw-eye" onclick="togglePw()" tabindex="-1">
