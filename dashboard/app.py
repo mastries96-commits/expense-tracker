@@ -4,6 +4,7 @@ import os
 import re
 import socket
 import sys
+import threading
 from functools import wraps
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -112,6 +113,146 @@ def _month_payload(month_id: int) -> dict:
         "balance": balance,
         "balance_pct": round(balance / m["salary"] * 100, 1) if m["salary"] else 0,
     }
+
+
+# ── Monthly report email ──────────────────────────────────────────────────────
+
+_REPORT_EMAIL = "masoodhusain.bh@gmail.com"
+
+
+def _send_monthly_report(prev_month_id: int):
+    """Build and email the closed month's statement. Skips silently if SMTP not configured."""
+    gmail_user = os.environ.get("GMAIL_USER", "")
+    gmail_pass = os.environ.get("GMAIL_APP_PASSWORD", "")
+    if not gmail_user or not gmail_pass:
+        return
+
+    data = db.get_month_details(prev_month_id)
+    if not data:
+        return
+
+    m           = data["month"]
+    month_name  = calendar.month_name[m["month"]]
+    year        = m["year"]
+    fixed_costs = data["fixed_costs"]
+    expenses    = data["expenses"]
+
+    fixed_total  = sum(f["amount"] for f in fixed_costs)
+    sav_total    = sum(e["amount"] for e in expenses if e["category"] == "savings")
+    var_expenses = [e for e in expenses if e["category"] != "savings"]
+    var_total    = sum(e["amount"] for e in var_expenses)
+    balance      = m["salary"] - fixed_total - var_total - sav_total
+    bal_color    = "#10B981" if balance >= 0 else "#EF4444"
+
+    # Category totals sorted by amount desc
+    by_cat: dict = {}
+    for e in var_expenses:
+        by_cat[e["category"]] = by_cat.get(e["category"], 0) + e["amount"]
+
+    th = "padding:9px 14px;border-bottom:1px solid #F1F5F9;font-size:13px"
+    fixed_rows = "".join(
+        f'<tr><td style="{th};color:#334155">{f["name"]}</td>'
+        f'<td style="{th};font-weight:700;color:#F59E0B;text-align:right">AED {f["amount"]:,.2f}</td></tr>'
+        for f in fixed_costs
+    )
+    cat_rows = "".join(
+        f'<tr><td style="{th};color:#334155">{cat.capitalize()}</td>'
+        f'<td style="{th};font-weight:700;color:#EF4444;text-align:right">AED {amt:,.2f}</td></tr>'
+        for cat, amt in sorted(by_cat.items(), key=lambda x: -x[1])
+    )
+
+    savings_row = (
+        f'<tr><td colspan="4" style="padding:14px 20px;border-bottom:1px solid #F1F5F9;background:#F0FDF4">'
+        f'<span style="font-size:12px;color:#10B981;font-weight:700">🐷 Savings: AED {sav_total:,.2f}</span></td></tr>'
+        if sav_total > 0 else ""
+    )
+    cat_section = (
+        f'<table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #E2E8F0;border-radius:8px;margin-top:16px;border-collapse:collapse">'
+        f'<tr><td colspan="2" style="padding:12px 14px 8px;font-size:11px;font-weight:700;text-transform:uppercase;'
+        f'letter-spacing:.06em;color:#64748B;background:#FEF2F2;border-bottom:1px solid #FECACA;border-radius:8px 8px 0 0">🛒 Variable Expenses</td></tr>'
+        f'{cat_rows}'
+        f'<tr><td style="padding:10px 14px;font-weight:700;font-size:13px;color:#1E293B;border-top:2px solid #E2E8F0">Total</td>'
+        f'<td style="padding:10px 14px;font-weight:800;font-size:13px;color:#EF4444;text-align:right;border-top:2px solid #E2E8F0">AED {var_total:,.2f}</td></tr>'
+        f'</table>'
+    ) if cat_rows else ""
+
+    html = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:24px 16px;background:#F0F4F8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center">
+<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%">
+<tr><td>
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#1E293B;border-radius:12px 12px 0 0">
+    <tr><td style="padding:28px 32px">
+      <div style="color:#94A3B8;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Monthly Statement</div>
+      <div style="color:#fff;font-size:26px;font-weight:800">{month_name} {year}</div>
+      <div style="color:#64748B;font-size:12px;margin-top:8px">Your Expense Tracker report</div>
+    </td></tr>
+  </table>
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #E2E8F0;border-top:none">
+    <tr>
+      <td width="25%" style="padding:18px 14px;border-right:1px solid #F1F5F9;border-bottom:1px solid #F1F5F9">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748B;margin-bottom:5px">Salary</div>
+        <div style="font-size:15px;font-weight:800;color:#10B981">AED {m['salary']:,.2f}</div>
+      </td>
+      <td width="25%" style="padding:18px 14px;border-right:1px solid #F1F5F9;border-bottom:1px solid #F1F5F9">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748B;margin-bottom:5px">Fixed</div>
+        <div style="font-size:15px;font-weight:800;color:#F59E0B">AED {fixed_total:,.2f}</div>
+      </td>
+      <td width="25%" style="padding:18px 14px;border-right:1px solid #F1F5F9;border-bottom:1px solid #F1F5F9">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748B;margin-bottom:5px">Variable</div>
+        <div style="font-size:15px;font-weight:800;color:#EF4444">AED {var_total:,.2f}</div>
+      </td>
+      <td width="25%" style="padding:18px 14px;border-bottom:1px solid #F1F5F9">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748B;margin-bottom:5px">Balance</div>
+        <div style="font-size:15px;font-weight:800;color:{bal_color}">AED {balance:,.2f}</div>
+      </td>
+    </tr>
+    {savings_row}
+  </table>
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#fff;border:1px solid #E2E8F0;border-radius:8px;margin-top:16px;border-collapse:collapse">
+    <tr><td colspan="2" style="padding:12px 14px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748B;background:#FFFBEB;border-bottom:1px solid #FEF3C7;border-radius:8px 8px 0 0">📌 Fixed Costs</td></tr>
+    {fixed_rows}
+    <tr>
+      <td style="padding:10px 14px;font-weight:700;font-size:13px;color:#1E293B;border-top:2px solid #E2E8F0">Total</td>
+      <td style="padding:10px 14px;font-weight:800;font-size:13px;color:#F59E0B;text-align:right;border-top:2px solid #E2E8F0">AED {fixed_total:,.2f}</td>
+    </tr>
+  </table>
+
+  {cat_section}
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#1E293B;border-radius:0 0 12px 12px;margin-top:0">
+    <tr><td style="padding:18px 32px;text-align:center;color:#64748B;font-size:12px">
+      Expense Tracker · UAE · Sent automatically when new salary is recorded
+    </td></tr>
+  </table>
+
+</td></tr>
+</table>
+</td></tr></table>
+</body></html>"""
+
+    import smtplib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"{month_name} {year} — Expense Statement"
+    msg["From"]    = f"Expense Tracker <{gmail_user}>"
+    msg["To"]      = _REPORT_EMAIL
+    msg.attach(MIMEText(html, "html"))
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as s:
+            s.starttls()
+            s.login(gmail_user, gmail_pass)
+            s.sendmail(gmail_user, _REPORT_EMAIL, msg.as_string())
+        app.logger.info("Monthly report sent: %s %s", month_name, year)
+    except Exception as e:
+        app.logger.error("Monthly report email failed: %s", e)
 
 
 # ── Page routes ───────────────────────────────────────────────────────────────
@@ -282,6 +423,9 @@ def api_add_salary():
     month_id = db.create_or_get_month(new_year, new_month, amount)
     db.add_fixed_costs(month_id, FIXED_COSTS)
     balance = db.get_balance(month_id)
+
+    if prev:
+        threading.Thread(target=_send_monthly_report, args=(prev["id"],), daemon=True).start()
 
     return jsonify({
         "ok": True,
@@ -660,6 +804,8 @@ def _process_tg_text(text: str) -> str:
         db.add_fixed_costs(month_id, FIXED_COSTS)
         fixed_tot = sum(FIXED_COSTS.values())
         balance   = amount - fixed_tot
+        if prev:
+            threading.Thread(target=_send_monthly_report, args=(prev["id"],), daemon=True).start()
         lines = [f"  • {n}: AED {v:,.2f}" for n, v in FIXED_COSTS.items()]
         return (f"✅ *Salary AED {amount:,.2f} recorded*\n\n"
                 f"📌 Fixed costs deducted:\n" + "\n".join(lines) + "\n\n"
