@@ -679,6 +679,37 @@
       </div>
     </div>
 
+    <!-- Daily / Weekly quick stats -->
+    <div class="row g-3 mb-4" id="quick-stats-row">
+      <div class="col-4">
+        <div class="chart-card" style="padding:16px 18px;border-top:3px solid #F59E0B">
+          <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">
+            <i class="fa-solid fa-sun me-1" style="color:#F59E0B"></i>Today
+          </div>
+          <div style="font-size:1.15rem;font-weight:800;color:var(--text);line-height:1.1" id="qs-today">—</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px" id="qs-today-sub">—</div>
+        </div>
+      </div>
+      <div class="col-4">
+        <div class="chart-card" style="padding:16px 18px;border-top:3px solid #8B5CF6">
+          <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">
+            <i class="fa-solid fa-calendar-week me-1" style="color:#8B5CF6"></i>This Week
+          </div>
+          <div style="font-size:1.15rem;font-weight:800;color:var(--text);line-height:1.1" id="qs-week">—</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px" id="qs-week-sub">—</div>
+        </div>
+      </div>
+      <div class="col-4">
+        <div class="chart-card" style="padding:16px 18px;border-top:3px solid #3B82F6">
+          <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:8px">
+            <i class="fa-solid fa-chart-line me-1" style="color:#3B82F6"></i>Daily Avg
+          </div>
+          <div style="font-size:1.15rem;font-weight:800;color:var(--text);line-height:1.1" id="qs-avg">—</div>
+          <div style="font-size:.72rem;color:var(--muted);margin-top:5px" id="qs-avg-sub">—</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Charts row -->
     <div class="row g-3 mb-4">
       <div class="col-lg-5">
@@ -1073,6 +1104,7 @@ function renderCurrent(d) {
   document.getElementById('stat-balance-pct').textContent =
     `${d.balance_pct}% remaining`;
 
+  renderQuickStats(d);
   renderPieChart(d);
   renderFixedCosts(d);
   renderTransactions(d);
@@ -1113,6 +1145,56 @@ function clearCatFilter() {
 }
 
 // ── Pie chart ────────────────────────────────────────────────────────────────
+function renderQuickStats(d) {
+  const now       = new Date();
+  const todayStr  = now.toISOString().split('T')[0];
+
+  const yest = new Date(now); yest.setDate(now.getDate() - 1);
+  const yesterdayStr = yest.toISOString().split('T')[0];
+
+  // Monday of current week (Mon=start)
+  const dow    = now.getDay(); // 0=Sun
+  const mon    = new Date(now);
+  mon.setDate(now.getDate() - (dow === 0 ? 6 : dow - 1));
+  mon.setHours(0, 0, 0, 0);
+  const mondayStr = mon.toISOString().split('T')[0];
+
+  let todaySpend = 0, weekSpend = 0, yesterdaySpend = 0;
+  (d.expenses || []).forEach(e => {
+    if (e.category === 'savings') return;
+    const a = e.amount, dt = e.expense_date;
+    if (dt === todayStr)     todaySpend     += a;
+    if (dt === yesterdayStr) yesterdaySpend += a;
+    if (dt >= mondayStr)     weekSpend      += a;
+  });
+
+  const dayOfMonth  = now.getDate();
+  const dailyAvg    = dayOfMonth > 0 ? (d.var_total || 0) / dayOfMonth : 0;
+  const dayOfWeek   = dow === 0 ? 7 : dow; // 1=Mon … 7=Sun
+
+  // Today card
+  document.getElementById('qs-today').textContent = AED(todaySpend);
+  if (todaySpend === 0) {
+    document.getElementById('qs-today-sub').textContent = 'Nothing yet today';
+  } else if (yesterdaySpend > 0) {
+    const diff = todaySpend - yesterdaySpend;
+    document.getElementById('qs-today-sub').textContent =
+      (diff >= 0 ? '▲ ' : '▼ ') + AED(Math.abs(diff)) + ' vs yesterday';
+  } else {
+    document.getElementById('qs-today-sub').textContent = 'Yesterday: AED 0';
+  }
+
+  // This week card
+  document.getElementById('qs-week').textContent = AED(weekSpend);
+  document.getElementById('qs-week-sub').textContent =
+    `Day ${dayOfWeek} of 7 · Mon–Sun`;
+
+  // Daily average card
+  document.getElementById('qs-avg').textContent = AED(dailyAvg);
+  document.getElementById('qs-avg-sub').textContent =
+    `Over ${dayOfMonth} day${dayOfMonth !== 1 ? 's' : ''} this month`;
+}
+
 function renderPieChart(d) {
   const labels = [], values = [], colors = [], cats = [];
   let idx = 0;
