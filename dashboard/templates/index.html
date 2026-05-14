@@ -53,45 +53,86 @@
       display: flex; flex-direction: column;
       padding: 28px 20px;
       z-index: 100;
-      overflow-y: auto;
+      overflow-y: auto; overflow-x: hidden;
       border-right: 1px solid rgba(255,255,255,.04);
+      transition: width .22s ease, padding .22s ease;
     }
     .sidebar .brand {
       display: flex; align-items: center; gap: 10px;
       color: #fff; font-size: 1.1rem; font-weight: 700;
-      margin-bottom: 36px;
+      margin-bottom: 36px; transition: gap .22s;
     }
-    .sidebar .brand i { font-size: 1.4rem; color: var(--income); }
+    .sidebar .brand i { font-size: 1.4rem; color: var(--income); flex-shrink: 0; }
+    .brand-text { white-space: nowrap; overflow: hidden; transition: opacity .15s, width .22s; }
+    .collapse-toggle {
+      margin-left: auto; flex-shrink: 0;
+      background: none; border: none;
+      color: #8B949E; font-size: .72rem;
+      cursor: pointer; padding: 4px 7px; border-radius: 6px;
+      transition: color .15s, background .15s; line-height: 1;
+    }
+    .collapse-toggle:hover { color: #fff; background: rgba(255,255,255,.08); }
     .nav-item {
       display: flex; align-items: center; gap: 12px;
       padding: 11px 14px; border-radius: 10px;
       color: #94A3B8; font-size: .875rem; font-weight: 500;
-      cursor: pointer; transition: all .18s; margin-bottom: 4px;
-      text-decoration: none;
+      cursor: pointer; transition: background .18s, color .18s, padding .22s; margin-bottom: 4px;
+      text-decoration: none; white-space: nowrap; overflow: hidden;
+      position: relative;
     }
     .nav-item:hover, .nav-item.active {
       background: rgba(255,255,255,.08); color: #fff;
     }
     .nav-item.active { background: var(--primary); color: #fff; }
-    .nav-item i { width: 18px; text-align: center; }
+    .nav-item i { width: 18px; text-align: center; flex-shrink: 0; }
+    .nav-label { transition: opacity .15s; }
     .sidebar-footer {
       margin-top: auto;
       color: #475569; font-size: .75rem; text-align: center;
+      overflow: hidden;
     }
     .refresh-btn {
       width: 100%; padding: 10px; border-radius: 10px;
       background: rgba(255,255,255,.07); border: none;
       color: #94A3B8; font-size: .82rem; cursor: pointer;
-      transition: .18s; margin-bottom: 12px;
+      transition: background .18s, color .18s; margin-bottom: 12px;
+      white-space: nowrap; overflow: hidden;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
     }
     .refresh-btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+
+    /* Collapsed sidebar */
+    .sidebar.collapsed { width: 64px; padding: 28px 10px; }
+    .sidebar.collapsed .brand { gap: 0; justify-content: center; margin-bottom: 28px; }
+    .sidebar.collapsed .brand-text { opacity: 0; width: 0; }
+    .sidebar.collapsed .collapse-toggle { margin-left: 0; margin-top: 6px; }
+    .sidebar.collapsed .nav-item { padding: 12px; justify-content: center; gap: 0; }
+    .sidebar.collapsed .nav-label { opacity: 0; width: 0; overflow: hidden; }
+    .sidebar.collapsed .refresh-btn { padding: 10px; }
+    .sidebar.collapsed .btn-label { opacity: 0; width: 0; overflow: hidden; display: inline-block; }
+    .sidebar.collapsed #last-updated { display: none; }
+    .sidebar.collapsed .nav-item::after {
+      content: attr(data-label);
+      position: absolute; left: calc(100% + 10px); top: 50%;
+      transform: translateY(-50%);
+      background: #21262D; color: #C9D1D9;
+      padding: 5px 12px; border-radius: 7px;
+      font-size: .78rem; font-weight: 600;
+      white-space: nowrap; pointer-events: none;
+      border: 1px solid #30363D;
+      opacity: 0; transition: opacity .12s;
+      z-index: 300;
+    }
+    .sidebar.collapsed .nav-item:hover::after { opacity: 1; }
 
     /* ── Main content ────────────────────────────────────── */
     .main {
       margin-left: 240px;
       padding: 32px 32px 60px;
       min-height: 100vh;
+      transition: margin-left .22s ease;
     }
+    .main.sb-collapsed { margin-left: 64px; }
 
     /* ── Header ──────────────────────────────────────────── */
     .page-header {
@@ -493,10 +534,10 @@
       border: none; border-radius: 50px;
       font-size: .9rem; font-weight: 700;
       cursor: pointer;
-      box-shadow: 0 4px 20px rgba(16,185,129,.45);
-      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 4px 20px rgba(0,201,167,.35);
+      transition: left .22s ease, transform .15s, box-shadow .15s;
     }
-    #add-fab:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(16,185,129,.55); }
+    #add-fab:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,201,167,.5); }
     #add-fab:active { transform: translateY(0); }
 
     /* ── Add Entry Modal ─────────────────────────────────── */
@@ -572,35 +613,38 @@
 <body>
 
 <!-- ── Sidebar ─────────────────────────────────────────────────── -->
-<nav class="sidebar">
+<nav class="sidebar" id="sidebar">
   <div class="brand">
     <i class="fa-solid fa-wallet"></i>
-    Expense Tracker
+    <span class="brand-text">Expense Tracker</span>
+    <button class="collapse-toggle" onclick="toggleSidebar()" title="Toggle sidebar">
+      <i class="fa-solid fa-chevron-left" id="sidebar-toggle-icon"></i>
+    </button>
   </div>
 
-  <a class="nav-item active" onclick="showView('current')">
-    <i class="fa-solid fa-gauge-high"></i> Dashboard
+  <a class="nav-item active" onclick="showView('current')" data-label="Dashboard">
+    <i class="fa-solid fa-gauge-high"></i><span class="nav-label"> Dashboard</span>
   </a>
-  <a class="nav-item" onclick="showView('history')">
-    <i class="fa-solid fa-clock-rotate-left"></i> History
+  <a class="nav-item" onclick="showView('history')" data-label="History">
+    <i class="fa-solid fa-clock-rotate-left"></i><span class="nav-label"> History</span>
   </a>
-  <a class="nav-item" onclick="showView('reports')">
-    <i class="fa-solid fa-file-invoice-dollar"></i> Reports
+  <a class="nav-item" onclick="showView('reports')" data-label="Reports">
+    <i class="fa-solid fa-file-invoice-dollar"></i><span class="nav-label"> Reports</span>
   </a>
-  <a class="nav-item" onclick="showView('savings')">
-    <i class="fa-solid fa-piggy-bank"></i> Savings Road
+  <a class="nav-item" onclick="showView('savings')" data-label="Savings Road">
+    <i class="fa-solid fa-piggy-bank"></i><span class="nav-label"> Savings Road</span>
   </a>
 
   <div class="sidebar-footer">
     <button class="refresh-btn" onclick="toggleTheme()">
-      <i class="fa-solid fa-moon me-1" id="theme-icon"></i>
-      <span id="theme-label">Dark Mode</span>
+      <i class="fa-solid fa-moon" id="theme-icon"></i>
+      <span class="btn-label" id="theme-label">Dark Mode</span>
     </button>
     <button class="refresh-btn" onclick="refreshAll()">
-      <i class="fa-solid fa-rotate-right me-1"></i> Refresh Data
+      <i class="fa-solid fa-rotate-right"></i><span class="btn-label"> Refresh</span>
     </button>
     <button class="refresh-btn" onclick="location.href='/logout'" style="margin-bottom:10px">
-      <i class="fa-solid fa-right-from-bracket me-1"></i> Logout
+      <i class="fa-solid fa-right-from-bracket"></i><span class="btn-label"> Logout</span>
     </button>
     <div id="last-updated">—</div>
   </div>
@@ -1932,6 +1976,18 @@ async function saveEditedExpense() {
 }
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
+function toggleSidebar() {
+  const sb   = document.getElementById('sidebar');
+  const main = document.querySelector('.main');
+  const fab  = document.getElementById('add-fab');
+  const icon = document.getElementById('sidebar-toggle-icon');
+  const collapsed = sb.classList.toggle('collapsed');
+  main.classList.toggle('sb-collapsed', collapsed);
+  if (fab) fab.style.left = collapsed ? '92px' : '268px';
+  if (icon) icon.className = collapsed ? 'fa-solid fa-chevron-right' : 'fa-solid fa-chevron-left';
+  localStorage.setItem('et-sidebar', collapsed ? '1' : '0');
+}
+
 function toggleTheme() {
   const isDark = document.documentElement.dataset.theme === 'dark';
   applyTheme(isDark ? 'light' : 'dark');
@@ -2641,6 +2697,7 @@ if ('serviceWorker' in navigator) {
 // ── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
   applyTheme(localStorage.getItem('et-theme') || 'dark');
+  if (localStorage.getItem('et-sidebar') === '1') toggleSidebar();
   renderChat();
   await refreshAll();
   setInterval(refreshAll, 30000);
