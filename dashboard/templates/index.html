@@ -21,19 +21,20 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <style>
     :root {
-      --bg:       #F0F4F8;
+      --bg:       #F4F7FB;
       --card:     #FFFFFF;
-      --primary:  #3B82F6;
-      --income:   #10B981;
-      --expense:  #EF4444;
-      --fixed:    #F59E0B;
-      --balance:  #6366F1;
-      --savings:  #14B8A6;
-      --text:     #1E293B;
-      --muted:    #64748B;
-      --border:   #E2E8F0;
-      --radius:   14px;
+      --primary:  #00B89A;
+      --income:   #00897B;
+      --expense:  #D32F2F;
+      --fixed:    #F57C00;
+      --balance:  #1565C0;
+      --savings:  #2E7D32;
+      --text:     #0A1628;
+      --muted:    #546E7A;
+      --border:   #DDE4EE;
+      --radius:   10px;
       --shadow:   0 1px 3px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.06);
+      --sidebar:  #0A1628;
     }
     * { box-sizing: border-box; }
     body {
@@ -48,11 +49,12 @@
     .sidebar {
       position: fixed; top: 0; left: 0;
       width: 240px; height: 100vh;
-      background: #1E293B;
+      background: var(--sidebar, #0A1628);
       display: flex; flex-direction: column;
       padding: 28px 20px;
       z-index: 100;
       overflow-y: auto;
+      border-right: 1px solid rgba(255,255,255,.04);
     }
     .sidebar .brand {
       display: flex; align-items: center; gap: 10px;
@@ -269,25 +271,42 @@
       .main { margin-left: 0; padding: 20px 16px 60px; }
     }
 
-    /* ── Dark theme ──────────────────────────────────────── */
+    /* ── Dark theme (Charcoal + Teal — default) ─────────── */
     [data-theme="dark"] {
-      --bg:     #0F172A;
-      --card:   #1E293B;
-      --text:   #E2E8F0;
-      --muted:  #94A3B8;
-      --border: #334155;
-      --shadow: 0 1px 3px rgba(0,0,0,.25), 0 4px 16px rgba(0,0,0,.25);
+      --bg:       #0D1117;
+      --card:     #161B22;
+      --text:     #C9D1D9;
+      --muted:    #8B949E;
+      --border:   #21262D;
+      --primary:  #00C9A7;
+      --income:   #00C9A7;
+      --expense:  #F85149;
+      --fixed:    #E3B341;
+      --balance:  #58A6FF;
+      --savings:  #3FB950;
+      --sidebar:  #080C10;
+      --shadow:   0 1px 4px rgba(0,0,0,.55), 0 4px 20px rgba(0,0,0,.5);
     }
     [data-theme="dark"] body { background: var(--bg); color: var(--text); }
-    [data-theme="dark"] .table-card th { background: #1a2535; }
-    [data-theme="dark"] .table-card tr:hover td { background: #253244; }
-    [data-theme="dark"] .view-tabs { background: #253244; }
-    [data-theme="dark"] .view-tab.active { background: #334155; color: var(--text); box-shadow: none; }
-    [data-theme="dark"] .month-badge { background: var(--card); border-color: var(--border); }
+    [data-theme="dark"] .sidebar { background: #080C10; border-right: 1px solid #161B22; }
+    [data-theme="dark"] .table-card th { background: #0D1117; color: var(--muted); }
+    [data-theme="dark"] .table-card tr:hover td { background: #1C2128; }
+    [data-theme="dark"] .view-tabs { background: #1C2128; }
+    [data-theme="dark"] .view-tab.active { background: #21262D; color: var(--text); box-shadow: none; }
+    [data-theme="dark"] .month-badge { background: #1C2128; border-color: var(--border); color: var(--muted); }
     [data-theme="dark"] .section-title { color: var(--muted); }
-    [data-theme="dark"] .desc-input { background: #253244; border-color: var(--border); color: var(--text); }
+    [data-theme="dark"] .desc-input { background: #0D1117; border-color: var(--border); color: var(--text); }
     [data-theme="dark"] #fixed-costs-card { background: var(--card); }
-    [data-theme="dark"] #fixed-costs-card > div > div { background: rgba(245,158,11,.04) !important; }
+    [data-theme="dark"] #fixed-costs-card > div > div { background: rgba(227,179,65,.06) !important; border-color: rgba(227,179,65,.18) !important; }
+    [data-theme="dark"] .stat-card { border-top-color: var(--border); }
+    [data-theme="dark"] .stat-card.card-income  { border-top-color: var(--income); }
+    [data-theme="dark"] .stat-card.card-fixed   { border-top-color: var(--fixed);  }
+    [data-theme="dark"] .stat-card.card-expense { border-top-color: var(--expense);}
+    [data-theme="dark"] .stat-card.card-savings { border-top-color: var(--savings);}
+    [data-theme="dark"] .stat-card.card-balance { border-top-color: var(--balance);}
+    [data-theme="dark"] .chat-bubble-bot { background: #1C2128; }
+    [data-theme="dark"] .add-tab { border-color: var(--border); color: var(--muted); }
+    [data-theme="dark"] .field-input { background: #0D1117; border-color: var(--border); color: var(--text); }
 
     /* ── Clickable pie legend ────────────────────────────── */
     #pie-legend { max-height: 200px; overflow-y: auto; }
@@ -297,11 +316,11 @@
     }
     .legend-item:hover { background: var(--bg); }
     .legend-item.legend-active {
-      background: rgba(59,130,246,.1);
-      outline: 1px solid rgba(59,130,246,.25);
+      background: rgba(0,201,167,.1);
+      outline: 1px solid rgba(0,201,167,.3);
     }
-    [data-theme="dark"] .legend-item:hover { background: #253244; }
-    [data-theme="dark"] .legend-item.legend-active { background: rgba(59,130,246,.15); }
+    [data-theme="dark"] .legend-item:hover { background: #1C2128; }
+    [data-theme="dark"] .legend-item.legend-active { background: rgba(0,201,167,.12); outline-color: rgba(0,201,167,.35); }
 
     /* ── Expense action buttons ───────────────────────────── */
     .action-btn {
@@ -1072,9 +1091,9 @@ let allTransactions = [];
 const AED = n => 'AED ' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
 
 const CATEGORY_PALETTE = [
-  '#EF4444','#F97316','#F59E0B','#10B981',
-  '#3B82F6','#8B5CF6','#EC4899','#06B6D4',
-  '#84CC16','#6B7280','#14B8A6','#F43F5E',
+  '#00C9A7','#58A6FF','#E3B341','#F85149',
+  '#3FB950','#D2A8FF','#FFA657','#79C0FF',
+  '#56D364','#FF7B72','#FFC680','#A5D6FF',
 ];
 const CATEGORY_ICONS = {
   food:'utensils', petrol:'gas-pump', fuel:'gas-pump', groceries:'basket-shopping',
@@ -1085,7 +1104,7 @@ const CATEGORY_ICONS = {
 const catIcon = c => CATEGORY_ICONS[c.toLowerCase()] || 'tag';
 
 function catColor(cat, index) {
-  const fixed = { rent:'#F59E0B', etisalat:'#F97316', 'auto loan':'#EF4444' };
+  const fixed = { rent:'#E3B341', etisalat:'#FFA657', 'auto loan':'#F85149' };
   if (fixed[cat.toLowerCase()]) return fixed[cat.toLowerCase()];
   return CATEGORY_PALETTE[index % CATEGORY_PALETTE.length];
 }
@@ -1293,10 +1312,10 @@ function renderBarChart(months) {
     data: {
       labels,
       datasets: [
-        { label: 'Salary',    data: salaries,   backgroundColor: 'rgba(16,185,129,.8)',  borderRadius: 4 },
-        { label: 'Expenses',  data: spent,      backgroundColor: 'rgba(239,68,68,.8)',   borderRadius: 4 },
-        { label: 'Savings',   data: savingsArr, backgroundColor: 'rgba(20,184,166,.8)',  borderRadius: 4 },
-        { label: 'Balance',   data: balances,   backgroundColor: 'rgba(99,102,241,.8)',  borderRadius: 4 },
+        { label: 'Salary',    data: salaries,   backgroundColor: 'rgba(0,201,167,.75)',  borderRadius: 4 },
+        { label: 'Expenses',  data: spent,      backgroundColor: 'rgba(248,81,73,.75)',  borderRadius: 4 },
+        { label: 'Savings',   data: savingsArr, backgroundColor: 'rgba(63,185,80,.75)',  borderRadius: 4 },
+        { label: 'Balance',   data: balances,   backgroundColor: 'rgba(88,166,255,.75)', borderRadius: 4 },
       ]
     },
     options: {
@@ -1309,7 +1328,7 @@ function renderBarChart(months) {
         x: { grid: { display: false } },
         y: {
           ticks: { callback: v => 'AED ' + (v/1000).toFixed(0) + 'k' },
-          grid: { color: '#F0F4F8' }
+          grid: { color: 'rgba(201,209,217,.07)' }
         }
       }
     }
@@ -2621,7 +2640,7 @@ if ('serviceWorker' in navigator) {
 
 // ── Init ─────────────────────────────────────────────────────────────────────
 (async () => {
-  applyTheme(localStorage.getItem('et-theme') || 'light');
+  applyTheme(localStorage.getItem('et-theme') || 'dark');
   renderChat();
   await refreshAll();
   setInterval(refreshAll, 30000);
