@@ -635,50 +635,6 @@
       </div>
     </div>
 
-    <!-- Stat cards -->
-    <div class="row g-3 mb-4" id="stat-cards">
-      <div class="col-sm-6 col-xl">
-        <div class="stat-card card-income">
-          <div class="icon-bg" style="background:var(--income)"><i class="fa-solid fa-arrow-down-to-line"></i></div>
-          <div class="label">Salary / Income</div>
-          <div class="value" id="stat-salary">—</div>
-          <div class="sub">This month</div>
-        </div>
-      </div>
-      <div class="col-sm-6 col-xl">
-        <div class="stat-card card-fixed">
-          <div class="icon-bg" style="background:var(--fixed)"><i class="fa-solid fa-lock"></i></div>
-          <div class="label">Fixed Costs</div>
-          <div class="value" id="stat-fixed">—</div>
-          <div class="sub">Rent · Etisalat · Auto Loan</div>
-        </div>
-      </div>
-      <div class="col-sm-6 col-xl">
-        <div class="stat-card card-expense">
-          <div class="icon-bg" style="background:var(--expense)"><i class="fa-solid fa-cart-shopping"></i></div>
-          <div class="label">Variable Expenses</div>
-          <div class="value" id="stat-var">—</div>
-          <div class="sub" id="stat-var-sub">—</div>
-        </div>
-      </div>
-      <div class="col-sm-6 col-xl">
-        <div class="stat-card card-savings">
-          <div class="icon-bg" style="background:var(--savings)"><i class="fa-solid fa-piggy-bank"></i></div>
-          <div class="label">Savings</div>
-          <div class="value" id="stat-savings">—</div>
-          <div class="sub" id="stat-savings-sub">Set aside this month</div>
-        </div>
-      </div>
-      <div class="col-sm-6 col-xl">
-        <div class="stat-card card-balance">
-          <div class="icon-bg" style="background:var(--balance)"><i class="fa-solid fa-wallet"></i></div>
-          <div class="label">Balance</div>
-          <div class="value" id="stat-balance">—</div>
-          <div class="sub" id="stat-balance-pct">—</div>
-        </div>
-      </div>
-    </div>
-
     <!-- Daily / Weekly quick stats -->
     <div class="row g-3 mb-4" id="quick-stats-row">
       <div class="col-4">
@@ -731,6 +687,50 @@
       </div>
     </div>
 
+    <!-- Stat cards -->
+    <div class="row g-3 mb-4" id="stat-cards">
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card card-income">
+          <div class="icon-bg" style="background:var(--income)"><i class="fa-solid fa-arrow-down-to-line"></i></div>
+          <div class="label">Salary / Income</div>
+          <div class="value" id="stat-salary">—</div>
+          <div class="sub">This month</div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card card-fixed">
+          <div class="icon-bg" style="background:var(--fixed)"><i class="fa-solid fa-lock"></i></div>
+          <div class="label">Fixed Costs</div>
+          <div class="value" id="stat-fixed">—</div>
+          <div class="sub">Rent · Etisalat · Auto Loan</div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card card-expense">
+          <div class="icon-bg" style="background:var(--expense)"><i class="fa-solid fa-cart-shopping"></i></div>
+          <div class="label">Variable Expenses</div>
+          <div class="value" id="stat-var">—</div>
+          <div class="sub" id="stat-var-sub">—</div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card card-savings">
+          <div class="icon-bg" style="background:var(--savings)"><i class="fa-solid fa-piggy-bank"></i></div>
+          <div class="label">Savings</div>
+          <div class="value" id="stat-savings">—</div>
+          <div class="sub" id="stat-savings-sub">Set aside this month</div>
+        </div>
+      </div>
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card card-balance">
+          <div class="icon-bg" style="background:var(--balance)"><i class="fa-solid fa-wallet"></i></div>
+          <div class="label">Balance</div>
+          <div class="value" id="stat-balance">—</div>
+          <div class="sub" id="stat-balance-pct">—</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Fixed Costs strip -->
     <div class="chart-card mb-3" id="fixed-costs-card">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -738,6 +738,14 @@
         <span style="font-weight:700;color:var(--fixed);font-size:.9rem" id="fc-total-label">—</span>
       </div>
       <div id="fixed-costs-pills" class="d-flex gap-2 flex-wrap"></div>
+    </div>
+
+    <!-- Daily spending chart -->
+    <div class="chart-card mb-3">
+      <h6><i class="fa-solid fa-calendar-days me-2"></i>Daily Spending — <span id="daily-chart-month" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></h6>
+      <div style="height:200px;position:relative">
+        <canvas id="dailyChart"></canvas>
+      </div>
     </div>
 
     <!-- Variable Expenses table -->
@@ -1058,6 +1066,7 @@ let currentData = null;
 let allMonths   = [];
 let pieChart    = null;
 let barChart    = null;
+let dailyChart  = null;
 let detailPie   = null;
 let allTransactions = [];
 const AED = n => 'AED ' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
@@ -1137,6 +1146,7 @@ function renderCurrent(d) {
   renderQuickStats(d);
   renderPieChart(d);
   renderFixedCosts(d);
+  renderDailyChart(d);
   renderTransactions(d);
 }
 
@@ -1323,6 +1333,67 @@ function renderFixedCosts(d) {
         <div style="font-size:.85rem;font-weight:600;color:var(--fixed)">${AED(fc.amount)}</div>
       </div>
     </div>`).join('');
+}
+
+// ── Daily spending chart ─────────────────────────────────────────────────────
+function renderDailyChart(d) {
+  const m = d.month;
+  document.getElementById('daily-chart-month').textContent = `${m.name} ${m.year}`;
+
+  const daysInMonth = new Date(m.year, m.month, 0).getDate();
+  const daily = {};
+  for (let i = 1; i <= daysInMonth; i++) daily[i] = 0;
+
+  (d.expenses || []).forEach(e => {
+    if (e.category === 'savings') return;
+    const day = parseInt((e.expense_date || '').split('-')[2], 10);
+    if (day >= 1 && day <= daysInMonth) daily[day] += e.amount;
+  });
+
+  const labels = Array.from({length: daysInMonth}, (_, i) => i + 1);
+  const values = labels.map(i => daily[i]);
+  const today  = new Date().getDate();
+
+  if (dailyChart) dailyChart.destroy();
+  dailyChart = new Chart(document.getElementById('dailyChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Spending',
+        data: values,
+        backgroundColor: labels.map(day =>
+          day === today ? 'rgba(16,185,129,.85)' :
+          values[day-1] > 0 ? 'rgba(59,130,246,.65)' : 'rgba(226,232,240,.4)'
+        ),
+        borderRadius: 3,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: ctx => `${m.name} ${ctx[0].label}, ${m.year}`,
+            label: ctx => ctx.raw > 0 ? ` ${AED(ctx.raw)}` : ' No spending',
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { font: { size: 9 }, maxRotation: 0 }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { callback: v => v === 0 ? '' : 'AED ' + (v >= 1000 ? (v/1000).toFixed(1)+'k' : v), font: { size: 9 } },
+          grid: { color: 'rgba(0,0,0,.04)' }
+        }
+      }
+    }
+  });
 }
 
 // ── Expenses table ───────────────────────────────────────────────────────────
