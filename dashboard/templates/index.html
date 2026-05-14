@@ -568,6 +568,9 @@
   <a class="nav-item" onclick="showView('reports')">
     <i class="fa-solid fa-file-invoice-dollar"></i> Reports
   </a>
+  <a class="nav-item" onclick="showView('savings')">
+    <i class="fa-solid fa-piggy-bank"></i> Savings Road
+  </a>
 
   <div class="sidebar-footer">
     <button class="refresh-btn" onclick="toggleTheme()">
@@ -820,6 +823,75 @@
       </div>
     </div>
   </div>
+  <!-- Savings Road view -->
+  <div id="view-savings" style="display:none">
+    <div class="page-header">
+      <div>
+        <p class="section-title" style="margin-top:0">Savings Road</p>
+        <h1 class="page-title">Your Savings Goal</h1>
+      </div>
+    </div>
+
+    <!-- Goal setup card -->
+    <div class="chart-card mb-4">
+      <h6 style="margin-bottom:16px"><i class="fa-solid fa-bullseye me-2" style="color:#14B8A6"></i>Set Your Goal</h6>
+      <div class="row g-3 align-items-end">
+        <div class="col-sm-5">
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Goal Name</div>
+          <input id="sv-goal-name" class="field-input" type="text" placeholder="e.g. Emergency Fund, Holiday, Car…" style="margin-bottom:0" />
+        </div>
+        <div class="col-sm-4">
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px">Target Amount (AED)</div>
+          <input id="sv-goal-amount" class="field-input" type="number" placeholder="50000" min="1" step="1" inputmode="decimal" style="margin-bottom:0" />
+        </div>
+        <div class="col-sm-3">
+          <button onclick="setSavingsGoal()" style="width:100%;padding:11px;border-radius:10px;border:none;background:#14B8A6;color:#fff;font-weight:700;font-size:.88rem;cursor:pointer;transition:.15s" onmouseover="this.style.background='#0d9488'" onmouseout="this.style.background='#14B8A6'">
+            <i class="fa-solid fa-check me-1"></i> Save Goal
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress section -->
+    <div id="sv-progress-section" style="display:none">
+
+      <!-- Big progress card -->
+      <div class="chart-card mb-4" style="border-left:4px solid #14B8A6">
+        <div class="d-flex justify-content-between align-items-start mb-4">
+          <div>
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px" id="sv-goal-label">Goal</div>
+            <div style="font-size:2rem;font-weight:800;color:#14B8A6;line-height:1" id="sv-saved-amount">AED 0</div>
+            <div style="font-size:.82rem;color:var(--muted);margin-top:4px">saved so far</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:4px">Target</div>
+            <div style="font-size:1.3rem;font-weight:700;color:var(--text)" id="sv-target-amount">AED 0</div>
+            <div style="font-size:.82rem;color:var(--muted);margin-top:4px" id="sv-remaining-label">remaining</div>
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div style="background:var(--border);border-radius:999px;height:14px;overflow:hidden;margin-bottom:10px">
+          <div id="sv-progress-bar" style="height:100%;border-radius:999px;background:linear-gradient(90deg,#14B8A6,#06B6D4);transition:width .6s ease;width:0%"></div>
+        </div>
+        <div class="d-flex justify-content-between" style="font-size:.78rem;color:var(--muted)">
+          <span id="sv-pct-label" style="font-weight:700;color:#14B8A6">0%</span>
+          <span id="sv-months-label"></span>
+        </div>
+      </div>
+
+      <!-- Monthly grid -->
+      <p class="section-title">Monthly Contributions</p>
+      <div id="sv-months-grid" class="row g-3 mb-4"></div>
+    </div>
+
+    <!-- Empty state (no goal set yet) -->
+    <div id="sv-empty-state" class="empty-state">
+      <i class="fa-solid fa-piggy-bank"></i>
+      <p>Set a goal above to start tracking your savings journey.</p>
+    </div>
+  </div>
+
 </main>
 
 <button id="add-fab" onclick="showAddModal()">
@@ -1667,11 +1739,13 @@ function showView(name) {
   document.getElementById('view-current').style.display = name === 'current' ? 'block' : 'none';
   document.getElementById('view-history').style.display = name === 'history' ? 'block' : 'none';
   document.getElementById('view-reports').style.display = name === 'reports' ? 'block' : 'none';
+  document.getElementById('view-savings').style.display = name === 'savings' ? 'block' : 'none';
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   event.currentTarget.classList.add('active');
   catFilter = null;
   document.querySelectorAll('.legend-item').forEach(el => el.classList.remove('legend-active'));
   if (name === 'reports') loadReports();
+  if (name === 'savings') loadSavings();
 }
 
 // ── Reports view ─────────────────────────────────────────────────────────────
@@ -2093,6 +2167,100 @@ function closeReportDetail() {
     `<h6><i class="fa-solid fa-list me-2"></i>All Transactions</h6>`;
   rptWeeklyVisible = false;
   rptData = null;
+}
+
+// ── Savings Road ─────────────────────────────────────────────────────────────
+
+function getSavingsGoal() {
+  try { return JSON.parse(localStorage.getItem('et-savings-goal') || 'null'); } catch { return null; }
+}
+
+function setSavingsGoal() {
+  const name   = document.getElementById('sv-goal-name').value.trim() || 'My Goal';
+  const amount = parseFloat(document.getElementById('sv-goal-amount').value);
+  if (!amount || amount <= 0) { toast('Enter a valid target amount'); return; }
+  localStorage.setItem('et-savings-goal', JSON.stringify({ name, amount }));
+  loadSavings();
+  toast('Goal saved!');
+}
+
+async function loadSavings() {
+  const goal = getSavingsGoal();
+
+  // Pre-fill inputs with saved goal
+  if (goal) {
+    document.getElementById('sv-goal-name').value   = goal.name;
+    document.getElementById('sv-goal-amount').value = goal.amount;
+  }
+
+  document.getElementById('sv-empty-state').style.display    = goal ? 'none' : 'flex';
+  document.getElementById('sv-progress-section').style.display = goal ? 'block' : 'none';
+  if (!goal) return;
+
+  const months = await fetchJSON('/api/months');
+
+  // Collect months that have savings entries, newest first
+  const savingsMonths = months
+    .filter(m => (m.savings_total || 0) > 0)
+    .sort((a, b) => (b.year - a.year) || (b.month - a.month));
+
+  const totalSaved = savingsMonths.reduce((s, m) => s + (m.savings_total || 0), 0);
+  const pct        = Math.min(totalSaved / goal.amount * 100, 100);
+  const remaining  = Math.max(goal.amount - totalSaved, 0);
+  const achieved   = totalSaved >= goal.amount;
+
+  // Update progress card
+  document.getElementById('sv-goal-label').textContent    = goal.name;
+  document.getElementById('sv-saved-amount').textContent  = AED(totalSaved);
+  document.getElementById('sv-target-amount').textContent = AED(goal.amount);
+  document.getElementById('sv-pct-label').textContent     = pct.toFixed(1) + '%';
+  document.getElementById('sv-progress-bar').style.width  = pct.toFixed(1) + '%';
+  document.getElementById('sv-progress-bar').style.background =
+    achieved ? 'linear-gradient(90deg,#10B981,#14B8A6)' : 'linear-gradient(90deg,#14B8A6,#06B6D4)';
+
+  if (achieved) {
+    document.getElementById('sv-remaining-label').textContent = '🎉 Goal achieved!';
+    document.getElementById('sv-remaining-label').style.color = '#10B981';
+  } else {
+    document.getElementById('sv-remaining-label').textContent = `${AED(remaining)} remaining`;
+    document.getElementById('sv-remaining-label').style.color = '';
+  }
+
+  const avgPerMonth = savingsMonths.length
+    ? (totalSaved / savingsMonths.length).toFixed(0)
+    : 0;
+  const monthsLeft = avgPerMonth > 0 && !achieved
+    ? Math.ceil(remaining / avgPerMonth)
+    : null;
+  document.getElementById('sv-months-label').textContent = monthsLeft
+    ? `~${monthsLeft} month${monthsLeft !== 1 ? 's' : ''} to go at current pace`
+    : achieved ? '' : 'Start saving to see estimate';
+
+  // Monthly grid
+  const grid = document.getElementById('sv-months-grid');
+  if (!savingsMonths.length) {
+    grid.innerHTML = `<div class="col-12"><div class="empty-state" style="padding:24px 0"><i class="fa-solid fa-piggy-bank"></i><p>No savings entries yet. Log an expense as "savings" to track here.</p></div></div>`;
+    return;
+  }
+
+  grid.innerHTML = savingsMonths.map(m => {
+    const contrib = goal.amount > 0 ? (m.savings_total / goal.amount * 100) : 0;
+    const isActive = m.status === 'active';
+    return `
+      <div class="col-sm-6 col-lg-4">
+        <div class="chart-card" style="border-left:3px solid #14B8A6;padding:18px 20px">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <div style="font-weight:700;font-size:.95rem">${m.name} ${m.year}</div>
+            ${isActive ? '<span style="font-size:.65rem;background:rgba(16,185,129,.15);color:var(--income);padding:2px 8px;border-radius:10px;font-weight:700">ACTIVE</span>' : ''}
+          </div>
+          <div style="font-size:1.4rem;font-weight:800;color:#14B8A6;margin-bottom:2px">${AED(m.savings_total)}</div>
+          <div style="font-size:.75rem;color:var(--muted);margin-bottom:12px">${contrib.toFixed(1)}% of target</div>
+          <div style="background:var(--border);border-radius:999px;height:6px;overflow:hidden">
+            <div style="width:${Math.min(contrib,100).toFixed(1)}%;height:100%;border-radius:999px;background:#14B8A6"></div>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 // ── PDF Generation ───────────────────────────────────────────────────────────
