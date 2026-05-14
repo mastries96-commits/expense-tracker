@@ -338,6 +338,28 @@ def api_delete_expense(expense_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/expense/<int:expense_id>", methods=["PATCH"])
+@login_required
+def api_update_expense(expense_id):
+    data = request.get_json()
+    raw_cat = (data.get("category") or "").strip().lower()
+    category = CATEGORY_ALIASES.get(raw_cat, raw_cat)
+    if not category:
+        return jsonify({"error": "missing category"}), 400
+    try:
+        amount = float(data.get("amount") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid amount"}), 400
+    if amount <= 0:
+        return jsonify({"error": "invalid amount"}), 400
+    description  = (data.get("description") or "").strip()
+    expense_date = (data.get("expense_date") or "").strip()
+    if not expense_date:
+        return jsonify({"error": "missing date"}), 400
+    db.update_expense_full(expense_id, category, amount, description, expense_date)
+    return jsonify({"ok": True, "category": category})
+
+
 @app.route("/api/expense/<int:expense_id>/description", methods=["PATCH"])
 @login_required
 def api_update_description(expense_id):

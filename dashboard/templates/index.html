@@ -1000,6 +1000,36 @@
   </div>
 </div>
 
+<!-- Edit Entry modal -->
+<div id="edit-modal" onclick="if(event.target===this)closeEditModal()" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center">
+  <div style="background:var(--card);border-radius:16px;padding:28px 32px;max-width:420px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px">
+      <span style="font-size:1.05rem;font-weight:700;color:var(--text)">Edit Entry</span>
+      <button onclick="closeEditModal()" style="background:none;border:none;font-size:1.3rem;color:var(--muted);cursor:pointer;padding:0 4px">×</button>
+    </div>
+    <input type="hidden" id="edit-expense-id" />
+    <div class="mb-3">
+      <div class="field-label">Category</div>
+      <input id="edit-category" class="field-input" type="text" placeholder="food, groceries, petrol…" list="cat-list" autocomplete="off" autocorrect="off" style="margin-bottom:0" />
+    </div>
+    <div class="mb-3">
+      <div class="field-label">Amount (AED)</div>
+      <input id="edit-amount" class="field-input" type="number" placeholder="0.00" min="0.01" step="0.01" inputmode="decimal" style="margin-bottom:0" />
+    </div>
+    <div class="mb-3">
+      <div class="field-label">Description <span style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</span></div>
+      <input id="edit-description" class="field-input" type="text" placeholder="e.g. weekly shop, filled tank…" style="margin-bottom:0" />
+    </div>
+    <div class="mb-4">
+      <div class="field-label">Date</div>
+      <input id="edit-date" class="field-input" type="date" style="margin-bottom:0" />
+    </div>
+    <button onclick="saveEditedExpense()" style="width:100%;padding:13px;border-radius:12px;border:none;background:var(--primary);color:#fff;font-weight:700;font-size:.95rem;cursor:pointer;transition:.15s" onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
+      <i class="fa-solid fa-check me-2"></i>Save Changes
+    </button>
+  </div>
+</div>
+
 <!-- Undo confirmation modal -->
 <div id="undo-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center" onclick="if(event.target===this)closeUndoModal()">
   <div style="background:var(--card);border-radius:16px;padding:28px 32px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
@@ -1326,13 +1356,14 @@ function renderTransactions(d) {
     }
     const thStyle = 'font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:7px 20px;background:var(--surface);text-align:left;border-bottom:1px solid var(--border)';
     const tbody = rows.map(t => {
-      const safeDesc = (t.description||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      const safeDesc = (t.description||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const safeCat  = t.category.replace(/'/g,"\\'");
       return `<tr>
         <td style="color:var(--muted);font-size:.8rem;padding:9px 20px">${t.date}</td>
         <td style="font-weight:600;color:${color};padding:9px 20px">${AED(t.amount)}</td>
-        <td class="desc-cell" style="color:var(--muted);font-size:.82rem;padding:9px 20px">${t.description||'—'}</td>
+        <td style="color:var(--muted);font-size:.82rem;padding:9px 20px">${t.description||'—'}</td>
         <td style="white-space:nowrap;text-align:right;padding:9px 12px">
-          <button class="action-btn edit-btn" onclick="startEditDesc(this,${t.id},'${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="action-btn edit-btn" onclick="openEditModal(${t.id},'${safeCat}',${t.amount},'${t.date}','${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
           <button class="action-btn del-btn" onclick="deleteExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
         </td>
       </tr>`;
@@ -1372,13 +1403,14 @@ function renderTransactions(d) {
     const icon = catIcon(cat);
 
     const rows = items.map(t => {
-      const safeDesc = (t.description||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+      const safeDesc = (t.description||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const safeCat  = t.category.replace(/'/g,"\\'");
       return `<tr>
         <td style="color:var(--muted);font-size:.8rem;padding:9px 20px">${t.date}</td>
         <td style="font-weight:600;color:${color};padding:9px 20px">${AED(t.amount)}</td>
-        <td class="desc-cell" style="color:var(--muted);font-size:.82rem;padding:9px 20px">${t.description||'—'}</td>
+        <td style="color:var(--muted);font-size:.82rem;padding:9px 20px">${t.description||'—'}</td>
         <td style="white-space:nowrap;text-align:right;padding:9px 12px">
-          <button class="action-btn edit-btn" onclick="startEditDesc(this,${t.id},'${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="action-btn edit-btn" onclick="openEditModal(${t.id},'${safeCat}',${t.amount},'${t.date}','${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
           <button class="action-btn del-btn" onclick="deleteExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
         </td>
       </tr>`;
@@ -1772,33 +1804,41 @@ async function deleteExpense(expenseId) {
   toast('Expense deleted');
 }
 
-function startEditDesc(btn, expenseId, currentDesc) {
-  const row = btn.closest('tr');
-  const cell = row.querySelector('.desc-cell');
-  const cur = currentDesc === '—' ? '' : currentDesc;
-  cell.innerHTML = `<input class="desc-input" value="${cur}">
-    <div class="d-flex gap-1 mt-1">
-      <button style="background:var(--income);color:#fff;border:none;border-radius:5px;padding:2px 9px;font-size:.72rem;cursor:pointer" onclick="saveDesc(this,${expenseId})">Save</button>
-      <button style="background:var(--border);color:var(--text);border:none;border-radius:5px;padding:2px 9px;font-size:.72rem;cursor:pointer" onclick="cancelEditDesc(this)">Cancel</button>
-    </div>`;
-  cell.querySelector('input').focus();
+function openEditModal(id, category, amount, date, description) {
+  document.getElementById('edit-expense-id').value  = id;
+  document.getElementById('edit-category').value    = category;
+  document.getElementById('edit-amount').value      = amount;
+  document.getElementById('edit-date').value        = date;
+  document.getElementById('edit-description').value = description;
+  document.getElementById('edit-modal').style.display = 'flex';
+  setTimeout(() => document.getElementById('edit-category').focus(), 80);
 }
 
-async function saveDesc(btn, expenseId) {
-  const cell = btn.closest('td');
-  const newDesc = cell.querySelector('input').value.trim();
-  const r = await fetch(`/api/expense/${expenseId}/description`, {
+function closeEditModal() {
+  document.getElementById('edit-modal').style.display = 'none';
+}
+
+async function saveEditedExpense() {
+  const id          = document.getElementById('edit-expense-id').value;
+  const category    = document.getElementById('edit-category').value.trim().toLowerCase();
+  const amount      = parseFloat(document.getElementById('edit-amount').value);
+  const description = document.getElementById('edit-description').value.trim();
+  const date        = document.getElementById('edit-date').value;
+
+  if (!category)        { toast('Category is required'); return; }
+  if (!amount || amount <= 0) { toast('Enter a valid amount'); return; }
+  if (!date)            { toast('Date is required'); return; }
+
+  const r = await fetch(`/api/expense/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ description: newDesc })
+    body: JSON.stringify({ category, amount, description, expense_date: date })
   });
   if (r.status === 401) { location.href = '/login'; return; }
+  const data = await r.json();
+  closeEditModal();
   await loadCurrent();
-  toast('Description updated');
-}
-
-function cancelEditDesc(btn) {
-  if (currentData) renderTransactions(currentData);
+  toast(`✓ Updated to ${data.category || category} — ${AED(amount)}`);
 }
 
 // ── Theme ─────────────────────────────────────────────────────────────────────

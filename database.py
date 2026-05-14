@@ -134,6 +134,13 @@ class Database:
             )
             return cur.lastrowid
 
+    def update_expense_full(self, expense_id: int, category: str, amount: float, description: str, expense_date: str):
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE expenses SET category=?, amount=?, description=?, expense_date=? WHERE id=?",
+                (category, amount, description, expense_date, expense_id)
+            )
+
     def delete_expense(self, expense_id: int):
         with self._conn() as conn:
             conn.execute("DELETE FROM expenses WHERE id=?", (expense_id,))
