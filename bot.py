@@ -9,7 +9,7 @@ from telegram.ext import (
     filters, ContextTypes,
 )
 
-from config import BOT_TOKEN, FIXED_COSTS, DASHBOARD_PORT, EXPENSE_CATEGORIES, CATEGORY_ALIASES
+from config import BOT_TOKEN, FIXED_COSTS, DASHBOARD_PORT, EXPENSE_CATEGORIES, CATEGORY_ALIASES, uae_now
 from database import Database
 
 logging.basicConfig(
@@ -184,7 +184,7 @@ async def cmd_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
-    now = datetime.now()
+    now = uae_now()
 
     # ── +Salary ────────────────────────────────────────────────────────────────
     salary_match = re.match(r"^\+[Ss]alary\s+([\d,]+(?:\.\d+)?)", text, re.IGNORECASE)

@@ -1,10 +1,23 @@
 import os
+import datetime as _dt
 
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
+
+try:
+    from zoneinfo import ZoneInfo
+    _UAE_TZ = ZoneInfo("Asia/Dubai")
+except ImportError:
+    _UAE_TZ = _dt.timezone(_dt.timedelta(hours=4))
+
+def uae_now() -> _dt.datetime:
+    return _dt.datetime.now(_UAE_TZ)
+
+def uae_today() -> _dt.date:
+    return uae_now().date()
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 

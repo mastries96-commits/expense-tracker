@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from flask import Flask, Response, jsonify, render_template, request, redirect, url_for, session, send_from_directory
 
-from config import DASHBOARD_PORT, FIXED_COSTS, DASHBOARD_PASSWORD, DASHBOARD_USERNAME, SECRET_KEY, CATEGORY_ALIASES, EXPENSE_CATEGORIES
+from config import DASHBOARD_PORT, FIXED_COSTS, DASHBOARD_PASSWORD, DASHBOARD_USERNAME, SECRET_KEY, CATEGORY_ALIASES, EXPENSE_CATEGORIES, uae_now, uae_today
 from database import Database
 
 app = Flask(__name__)
@@ -136,7 +136,7 @@ def debug_write():
         active = db.get_active_month()
         if not active:
             return jsonify({"step": "get_active_month", "result": None})
-        eid = db.add_expense(active["id"], "debugtest", 0.01, "auto-debug", str(_dt.date.today()))
+        eid = db.add_expense(active["id"], "debugtest", 0.01, "auto-debug", str(uae_today()))
         bal = db.get_balance(active["id"])
         return jsonify({"ok": True, "expense_id": eid, "balance": bal, "month_id": active["id"]})
     except Exception as e:
@@ -241,7 +241,7 @@ def api_add_expense():
     except (TypeError, ValueError):
         return jsonify({"error": "invalid_amount"}), 400
     description = (data.get("description") or "").strip()
-    date_str = data.get("date") or str(_dt.date.today())
+    date_str = data.get("date") or str(uae_today())
 
     if not raw_cat or amount <= 0:
         return jsonify({"error": "invalid_input"}), 400
@@ -278,7 +278,7 @@ def api_add_salary():
         else:
             new_year, new_month = prev["year"], prev["month"] + 1
     else:
-        now = _dt.datetime.now()
+        now = uae_now()
         new_year, new_month = now.year, now.month
 
     month_id = db.create_or_get_month(new_year, new_month, amount)
@@ -414,7 +414,7 @@ def api_chat():
     if not text:
         return jsonify({"ok": False, "message": "Empty message."})
 
-    now = _dt.datetime.now()
+    now = uae_now()
     cmd = text.lower().lstrip("/")
 
     # ── balance ───────────────────────────────────────────────────────────────
@@ -577,7 +577,7 @@ _BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 def _process_tg_text(text: str) -> str:
     """Run the same logic as /api/chat and return a plain-text reply."""
     import calendar as _cal
-    now = _dt.datetime.now()
+    now = uae_now()
     cmd = text.strip().lower().lstrip("/")
 
     if cmd in ("balance", "b"):
