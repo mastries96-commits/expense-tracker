@@ -273,6 +273,20 @@ def health():
     return "ok", 200
 
 
+@app.route("/api/test-email")
+@login_required
+def api_test_email():
+    import traceback
+    active = db.get_active_month()
+    if not active:
+        return jsonify({"error": "No active month to test with"}), 400
+    try:
+        _send_monthly_report(active["id"])
+        return jsonify({"ok": True, "sent_to": _REPORT_EMAIL, "month": f"{active['month']}/{active['year']}"})
+    except Exception as e:
+        return jsonify({"error": str(e), "trace": traceback.format_exc()}), 500
+
+
 @app.route("/api/debug-write")
 def debug_write():
     import traceback
