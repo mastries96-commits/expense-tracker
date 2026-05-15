@@ -787,6 +787,14 @@
           <div class="sub" id="stat-var-sub">—</div>
         </div>
       </div>
+      <div class="col-sm-6 col-xl" id="stat-spending-col">
+        <div class="stat-card" style="border-top:3px solid #7C3AED">
+          <div class="icon-bg" style="background:#7C3AED"><i class="fa-solid fa-arrow-trend-up"></i></div>
+          <div class="label">Total Spending</div>
+          <div class="value" id="stat-spending" style="color:#7C3AED">—</div>
+          <div class="sub" id="stat-spending-sub">Variable + sections</div>
+        </div>
+      </div>
       <div class="col-sm-6 col-xl">
         <div class="stat-card card-savings">
           <div class="icon-bg" style="background:var(--savings)"><i class="fa-solid fa-piggy-bank"></i></div>
@@ -1251,6 +1259,17 @@ function renderCurrent(d) {
   document.getElementById('stat-var').textContent      = AED(d.var_total);
   document.getElementById('stat-savings').textContent  = AED(d.savings_total || 0);
   document.getElementById('stat-balance').textContent  = AED(d.balance);
+  document.getElementById('stat-spending').textContent = AED(d.spending_total || 0);
+  // Build sub-label: "Variable · AMEX · …" or hide card if no special sections
+  const secs = d.special_sections || [];
+  const spendingCol = document.getElementById('stat-spending-col');
+  if (secs.length) {
+    spendingCol.style.display = '';
+    const parts = ['Variable', ...secs.map(s => s.label)];
+    document.getElementById('stat-spending-sub').textContent = parts.join(' · ');
+  } else {
+    spendingCol.style.display = 'none';
+  }
 
   const catCount = Object.keys(d.expenses_by_category).length;
   document.getElementById('stat-var-sub').textContent =
@@ -1284,9 +1303,10 @@ function renderCurrent(d) {
 function renderEmpty() {
   document.getElementById('header-month').textContent = 'No Active Month';
   document.getElementById('header-status').textContent = 'Inactive';
-  ['stat-salary','stat-fixed','stat-var','stat-savings','stat-balance'].forEach(id => {
+  ['stat-salary','stat-fixed','stat-var','stat-savings','stat-balance','stat-spending'].forEach(id => {
     document.getElementById(id).textContent = 'AED 0.00';
   });
+  document.getElementById('stat-spending-col').style.display = 'none';
   document.getElementById('transactions-wrap').innerHTML = `
     <div class="empty-state">
       <i class="fa-solid fa-wallet"></i>

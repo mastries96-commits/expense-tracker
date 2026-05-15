@@ -115,6 +115,7 @@ def _month_payload(month_id: int) -> dict:
         "expenses": data["expenses"],
         "expenses_by_category": expenses_by_cat,
         "var_total": var_total,
+        "spending_total": var_total + sum(special_totals.values()),
         "savings_total": savings_total,
         "total_spent": fixed_total + var_total,
         "balance": balance,
