@@ -838,7 +838,7 @@
       <div class="table-header" style="cursor:pointer" onclick="toggleExpensesList(event)">
         <h6 style="display:flex;align-items:center;gap:8px">
           <i class="fa-solid fa-list me-2"></i>Expenses
-          <i id="expenses-chevron" class="fa-solid fa-chevron-up" style="font-size:.65rem;color:var(--muted);transition:transform .2s;margin-left:4px"></i>
+          <i id="expenses-chevron" class="fa-solid fa-chevron-up" style="font-size:.65rem;color:var(--muted);transition:transform .2s;margin-left:4px;transform:rotate(180deg)"></i>
         </h6>
         <div style="display:flex;align-items:center;gap:8px" onclick="event.stopPropagation()">
           <div style="position:relative">
@@ -852,7 +852,7 @@
           </button>
         </div>
       </div>
-      <div id="transactions-wrap">
+      <div id="transactions-wrap" style="display:none">
         <div class="empty-state">
           <i class="fa-solid fa-receipt"></i>
           <p>No expenses yet — add via Telegram.</p>
