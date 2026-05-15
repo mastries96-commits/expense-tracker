@@ -661,6 +661,9 @@
         <h1 class="page-title" id="header-month">Loading…</h1>
       </div>
       <div style="display:flex;align-items:center;gap:10px">
+        <button onclick="openSectionsModal()" style="display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;border:1.5px solid #8B5CF6;background:rgba(139,92,246,.07);color:#8B5CF6;font-size:.82rem;font-weight:600;cursor:pointer;transition:.18s" onmouseover="this.style.background='rgba(139,92,246,.15)'" onmouseout="this.style.background='rgba(139,92,246,.07)'">
+          <i class="fa-solid fa-layer-group"></i> Sections
+        </button>
         <button onclick="showUndoModal()" style="display:flex;align-items:center;gap:7px;padding:9px 16px;border-radius:10px;border:1.5px solid #EF4444;background:rgba(239,68,68,.07);color:#EF4444;font-size:.82rem;font-weight:600;cursor:pointer;transition:.18s" onmouseover="this.style.background='rgba(239,68,68,.15)'" onmouseout="this.style.background='rgba(239,68,68,.07)'">
           <i class="fa-solid fa-rotate-left"></i> Undo Last Action
         </button>
@@ -802,6 +805,9 @@
       </div>
     </div>
 
+    <!-- Special sections stat cards (dynamically populated) -->
+    <div id="special-sections-cards" class="row g-3 mb-4" style="display:none"></div>
+
     <!-- Fixed Costs strip -->
     <div class="chart-card mb-3" id="fixed-costs-card">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -834,6 +840,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Special sections expense tables (dynamically populated) -->
+    <div id="special-sections-tables"></div>
   </div>
 
   <!-- History view -->
@@ -1109,6 +1118,43 @@
   </div>
 </div>
 
+<!-- Manage Sections modal -->
+<div id="sections-modal" onclick="if(event.target===this)closeSectionsModal()" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center">
+  <div style="background:var(--card);border-radius:16px;padding:28px 32px;max-width:500px;width:94%;box-shadow:0 20px 60px rgba(0,0,0,.25);max-height:88vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:22px">
+      <span style="font-size:1.05rem;font-weight:700;color:var(--text)">Custom Sections</span>
+      <button onclick="closeSectionsModal()" style="background:none;border:none;font-size:1.3rem;color:var(--muted);cursor:pointer;padding:0 4px">×</button>
+    </div>
+
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:10px">Your Sections</div>
+    <div id="sections-list" style="margin-bottom:22px"></div>
+
+    <hr style="border:none;border-top:1px solid var(--border);margin:0 0 22px">
+
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:14px">Add New Section</div>
+
+    <div class="mb-3">
+      <div class="field-label">Section Name</div>
+      <input id="new-section-label" class="field-input" type="text" placeholder="e.g. Credit Card, Loan Payment…" style="margin-bottom:0" onkeydown="if(event.key==='Enter')addSection()" />
+    </div>
+    <div class="mb-3">
+      <div class="field-label">Icon</div>
+      <div id="icon-swatches" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    </div>
+    <div class="mb-4">
+      <div class="field-label">Color</div>
+      <div id="color-swatches" style="display:flex;gap:10px;flex-wrap:wrap"></div>
+    </div>
+    <button id="add-section-btn" onclick="addSection()" class="submit-btn submit-btn-expense" style="margin-top:0">
+      <i class="fa-solid fa-plus me-2"></i> Add Section
+    </button>
+    <div style="margin-top:14px;font-size:.78rem;color:var(--muted)">
+      <i class="fa-solid fa-circle-info me-1"></i>
+      Add entries via the chat or the <strong>Add Payment</strong> button on each section's table.
+    </div>
+  </div>
+</div>
+
 <!-- Undo confirmation modal -->
 <div id="undo-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.5);align-items:center;justify-content:center" onclick="if(event.target===this)closeUndoModal()">
   <div style="background:var(--card);border-radius:16px;padding:28px 32px;max-width:380px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.25)">
@@ -1220,6 +1266,19 @@ function renderCurrent(d) {
   renderFixedCosts(d);
   renderDailyChart(d);
   renderTransactions(d);
+  renderSpecialCards(d);
+  renderSpecialTables(d);
+  // Add special section names to category autocomplete
+  const dl = document.getElementById('cat-list');
+  if (dl && d.special_sections) {
+    d.special_sections.forEach(s => {
+      if (!dl.querySelector(`option[value="${s.name}"]`)) {
+        const opt = document.createElement('option');
+        opt.value = s.name;
+        dl.appendChild(opt);
+      }
+    });
+  }
 }
 
 function renderEmpty() {
@@ -1746,6 +1805,184 @@ function renderTransactions(d) {
   }).join('');
 }
 
+// ── Special Sections ─────────────────────────────────────────────────────────
+
+const SECTION_ICONS = [
+  {icon:'credit-card',label:'Credit Card'},{icon:'car',label:'Car Loan'},
+  {icon:'house',label:'Mortgage'},{icon:'phone',label:'Phone Bill'},
+  {icon:'graduation-cap',label:'Tuition'},{icon:'receipt',label:'Bills'},
+  {icon:'building-columns',label:'Bank Loan'},{icon:'hand-holding-dollar',label:'Advance'},
+  {icon:'shield',label:'Insurance'},{icon:'briefcase',label:'Business'},
+  {icon:'bolt',label:'Utilities'},{icon:'money-bill-wave',label:'Cash'},
+];
+const SECTION_COLORS = ['#8B5CF6','#3B82F6','#F59E0B','#EC4899','#EF4444','#14B8A6','#10B981','#6366F1','#F97316'];
+
+function renderSpecialCards(d) {
+  const container = document.getElementById('special-sections-cards');
+  const sections  = d.special_sections || [];
+  if (!sections.length) { container.style.display = 'none'; return; }
+  container.style.display = '';
+  container.innerHTML = sections.map(s => {
+    const total = (d.special_totals || {})[s.name] || 0;
+    const count = (d.expenses || []).filter(e => e.category === s.name).length;
+    return `
+      <div class="col-sm-6 col-xl">
+        <div class="stat-card" style="border-top:3px solid ${s.color}">
+          <div class="icon-bg" style="background:${s.color}"><i class="fa-solid fa-${s.icon}"></i></div>
+          <div class="label">${s.label}</div>
+          <div class="value" style="color:${s.color}">${AED(total)}</div>
+          <div class="sub">${count} payment${count!==1?'s':''} this month</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderSpecialTables(d) {
+  const container = document.getElementById('special-sections-tables');
+  const sections  = d.special_sections || [];
+  if (!sections.length) { container.innerHTML = ''; return; }
+  const thStyle = 'font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:7px 20px;background:var(--surface);text-align:left;border-bottom:1px solid var(--border)';
+  container.innerHTML = sections.map(s => {
+    const entries = (d.expenses || []).filter(e => e.category === s.name).slice().reverse();
+    const total   = (d.special_totals || {})[s.name] || 0;
+    const rows = entries.map(e => {
+      const safeDesc = (e.description||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const safeCat  = e.category.replace(/'/g,"\\'");
+      return `<tr>
+        <td style="color:var(--muted);font-size:.8rem;padding:9px 20px">${e.expense_date}</td>
+        <td style="font-weight:600;color:${s.color};padding:9px 20px">${AED(e.amount)}</td>
+        <td style="color:var(--muted);font-size:.82rem;padding:9px 20px">${e.description||'—'}</td>
+        <td style="white-space:nowrap;text-align:right;padding:9px 12px">
+          <button class="action-btn edit-btn" onclick="openEditModal(${e.id},'${safeCat}',${e.amount},'${e.expense_date}','${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="action-btn del-btn" onclick="deleteExpense(${e.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+    const safeName = s.name.replace(/'/g,"\\'");
+    return `
+      <div class="table-card mt-3">
+        <div class="table-header">
+          <h6 style="display:flex;align-items:center;gap:8px">
+            <span style="width:26px;height:26px;border-radius:8px;background:${s.color}18;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="fa-solid fa-${s.icon}" style="font-size:.72rem;color:${s.color}"></i>
+            </span>
+            ${s.label}
+            <span style="font-size:.75rem;font-weight:500;color:var(--muted)">${AED(total)}</span>
+          </h6>
+          <button onclick="showAddModal('${safeName}')" style="display:flex;align-items:center;gap:5px;padding:6px 14px;border-radius:8px;border:1.5px solid ${s.color};background:${s.color}10;color:${s.color};font-size:.78rem;font-weight:600;cursor:pointer;transition:.15s" onmouseover="this.style.background='${s.color}22'" onmouseout="this.style.background='${s.color}10'">
+            <i class="fa-solid fa-plus"></i> Add Payment
+          </button>
+        </div>
+        ${entries.length ?
+          `<table style="width:100%;border-collapse:collapse">
+            <thead><tr>
+              <th style="${thStyle}">Date</th>
+              <th style="${thStyle}">Amount</th>
+              <th style="${thStyle}">Description</th>
+              <th style="${thStyle}"></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>` :
+          `<div class="empty-state" style="padding:28px 20px">
+            <i class="fa-solid fa-${s.icon}" style="color:${s.color};opacity:.4"></i>
+            <p style="margin-top:8px">No ${s.label} payments this month.<br>
+            <button onclick="showAddModal('${safeName}')" style="margin-top:8px;background:none;border:none;color:${s.color};font-weight:600;cursor:pointer;font-size:.85rem">+ Add one</button></p>
+          </div>`
+        }
+      </div>`;
+  }).join('');
+}
+
+function openSectionsModal() {
+  document.getElementById('sections-modal').style.display = 'flex';
+  _initSwatches();
+  renderSectionsModal();
+}
+
+function closeSectionsModal() {
+  document.getElementById('sections-modal').style.display = 'none';
+}
+
+function _initSwatches() {
+  const ic = document.getElementById('icon-swatches');
+  ic.innerHTML = SECTION_ICONS.map((s,i) => `
+    <div class="icon-swatch${i===0?' swatch-sel':''}" data-icon="${s.icon}" onclick="selectIconSwatch(this)" title="${s.label}"
+         style="width:38px;height:38px;border-radius:9px;border:2px solid ${i===0?'var(--primary)':'var(--border)'};display:flex;align-items:center;justify-content:center;cursor:pointer;background:${i===0?'rgba(0,184,154,.1)':''}">
+      <i class="fa-solid fa-${s.icon}" style="font-size:.85rem;color:${i===0?'var(--primary)':'var(--muted)'}"></i>
+    </div>`).join('');
+  const cc = document.getElementById('color-swatches');
+  cc.innerHTML = SECTION_COLORS.map((c,i) => `
+    <div class="color-swatch${i===0?' swatch-sel':''}" data-color="${c}" onclick="selectColorSwatch(this)"
+         style="width:28px;height:28px;border-radius:50%;background:${c};cursor:pointer;border:3px solid ${i===0?'#0A1628':'transparent'};transition:.15s"></div>`).join('');
+}
+
+function selectIconSwatch(el) {
+  document.querySelectorAll('.icon-swatch').forEach(s => {
+    s.style.border='2px solid var(--border)'; s.style.background=''; s.querySelector('i').style.color='var(--muted)'; s.classList.remove('swatch-sel');
+  });
+  el.style.border='2px solid var(--primary)'; el.style.background='rgba(0,184,154,.1)'; el.querySelector('i').style.color='var(--primary)'; el.classList.add('swatch-sel');
+}
+
+function selectColorSwatch(el) {
+  document.querySelectorAll('.color-swatch').forEach(s => { s.style.border='3px solid transparent'; s.classList.remove('swatch-sel'); });
+  el.style.border='3px solid #0A1628'; el.classList.add('swatch-sel');
+}
+
+function renderSectionsModal() {
+  const sections = currentData?.special_sections || [];
+  document.getElementById('sections-list').innerHTML = sections.length
+    ? sections.map(s => `
+        <div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <span style="width:34px;height:34px;border-radius:9px;background:${s.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="fa-solid fa-${s.icon}" style="color:${s.color};font-size:.85rem"></i>
+          </span>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:.9rem">${s.label}</div>
+            <div style="font-size:.72rem;color:var(--muted);font-family:monospace">type "${s.name}" in chat to log</div>
+          </div>
+          <button onclick="deleteSection(${s.id})" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:#EF4444;border-radius:7px;padding:5px 12px;font-size:.78rem;cursor:pointer">
+            <i class="fa-solid fa-trash"></i> Remove
+          </button>
+        </div>`).join('')
+    : '<div style="color:var(--muted);font-size:.85rem;padding:10px 0">No custom sections yet — add one below.</div>';
+}
+
+async function addSection() {
+  const label = document.getElementById('new-section-label').value.trim();
+  if (!label) { toast('Enter a section name'); return; }
+  const icon  = document.querySelector('.icon-swatch.swatch-sel')?.dataset.icon  || 'credit-card';
+  const color = document.querySelector('.color-swatch.swatch-sel')?.dataset.color || '#8B5CF6';
+  const btn = document.getElementById('add-section-btn');
+  btn.disabled = true;
+  try {
+    const res  = await fetch('/api/special-sections', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({label, icon, color})});
+    const data = await res.json();
+    if (data.ok) {
+      document.getElementById('new-section-label').value = '';
+      await loadCurrent();
+      renderSectionsModal();
+      toast(`"${label}" section added`);
+    } else {
+      toast(data.error || 'Failed to add section');
+    }
+  } catch(e) {
+    toast('Error adding section');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function deleteSection(id) {
+  if (!confirm('Remove this section? Existing entries stay in the database under the same category name.')) return;
+  const res  = await fetch('/api/special-sections/' + id, {method:'DELETE'});
+  const data = await res.json();
+  if (data.ok) {
+    await loadCurrent();
+    renderSectionsModal();
+    toast('Section removed');
+  }
+}
+
 // ── Chat ─────────────────────────────────────────────────────────────────────
 let chatLog = JSON.parse(sessionStorage.getItem('et-chat') || '[]');
 
@@ -1869,16 +2106,18 @@ async function confirmUndo() {
 }
 
 // ── Add Entry ────────────────────────────────────────────────────────────────
-function showAddModal() {
-  // Default date to today
+function showAddModal(prefillCat) {
   document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
-  document.getElementById('f-category').value = '';
+  document.getElementById('f-category').value = prefillCat || '';
   document.getElementById('f-amount').value = '';
   document.getElementById('f-desc').value = '';
   document.getElementById('f-salary').value = '';
   switchAddTab('expense');
   document.getElementById('add-modal').style.display = 'flex';
-  setTimeout(() => document.getElementById('f-category').focus(), 300);
+  setTimeout(() => {
+    const target = prefillCat ? 'f-amount' : 'f-category';
+    document.getElementById(target).focus();
+  }, 300);
 }
 
 function closeAddModal() {

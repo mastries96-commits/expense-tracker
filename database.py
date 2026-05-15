@@ -70,6 +70,16 @@ class Database:
                     FOREIGN KEY (month_id) REFERENCES months(id)
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS special_sections (
+                    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name       TEXT NOT NULL UNIQUE,
+                    label      TEXT NOT NULL,
+                    icon       TEXT NOT NULL DEFAULT 'credit-card',
+                    color      TEXT NOT NULL DEFAULT '#8B5CF6',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
     # ── Month operations ──────────────────────────────────────────────────────
 
@@ -221,6 +231,24 @@ class Database:
             conn.execute("DELETE FROM expenses WHERE month_id=?", (month_id,))
             conn.execute("DELETE FROM fixed_costs WHERE month_id=?", (month_id,))
             conn.execute("DELETE FROM months WHERE id=?", (month_id,))
+
+    # ── Special sections ──────────────────────────────────────────────────────
+
+    def get_special_sections(self) -> List[Dict]:
+        with self._conn() as conn:
+            return conn.execute("SELECT * FROM special_sections ORDER BY id").fetchall()
+
+    def add_special_section(self, name: str, label: str, icon: str, color: str) -> int:
+        with self._conn() as conn:
+            cur = conn.execute(
+                "INSERT INTO special_sections (name, label, icon, color) VALUES (?,?,?,?)",
+                (name, label, icon, color)
+            )
+            return cur.lastrowid
+
+    def delete_special_section(self, section_id: int):
+        with self._conn() as conn:
+            conn.execute("DELETE FROM special_sections WHERE id=?", (section_id,))
 
     def reopen_month(self, month_id: int):
         with self._conn() as conn:

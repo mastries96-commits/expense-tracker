@@ -88,11 +88,18 @@ def _month_payload(month_id: int) -> dict:
     m = data["month"]
     balance = db.get_balance(month_id)
     fixed_total   = sum(f["amount"] for f in data["fixed_costs"])
+
+    special_secs   = db.get_special_sections()
+    special_names  = {s["name"] for s in special_secs}
+    special_totals = {s["name"]: sum(e["amount"] for e in data["expenses"] if e["category"] == s["name"]) for s in special_secs}
+
     savings_total = sum(e["amount"] for e in data["expenses"] if e["category"] == "savings")
-    var_total     = sum(e["amount"] for e in data["expenses"] if e["category"] != "savings")
+    var_total     = sum(e["amount"] for e in data["expenses"] if e["category"] not in special_names and e["category"] != "savings")
 
     expenses_by_cat = db.get_expenses_summary(month_id)
     expenses_by_cat.pop("savings", None)
+    for _n in special_names:
+        expenses_by_cat.pop(_n, None)
 
     return {
         "month": {
@@ -112,6 +119,8 @@ def _month_payload(month_id: int) -> dict:
         "total_spent": fixed_total + var_total,
         "balance": balance,
         "balance_pct": round(balance / m["salary"] * 100, 1) if m["salary"] else 0,
+        "special_sections": [dict(s) for s in special_secs],
+        "special_totals": special_totals,
     }
 
 
@@ -403,6 +412,38 @@ def api_reclassify():
                 fixed_count += 1
 
     return jsonify({"ok": True, "fixed": fixed_count})
+
+
+# ── Special sections API ──────────────────────────────────────────────────────
+
+@app.route("/api/special-sections", methods=["GET"])
+@login_required
+def api_get_special_sections():
+    return jsonify([dict(s) for s in db.get_special_sections()])
+
+
+@app.route("/api/special-sections", methods=["POST"])
+@login_required
+def api_add_special_section():
+    data = request.get_json()
+    label = (data.get("label") or "").strip()
+    if not label:
+        return jsonify({"error": "label required"}), 400
+    name  = re.sub(r'[^a-z0-9]+', '_', label.lower().strip()).strip('_')
+    icon  = (data.get("icon") or "credit-card").strip()
+    color = (data.get("color") or "#8B5CF6").strip()
+    try:
+        sid = db.add_special_section(name, label, icon, color)
+        return jsonify({"ok": True, "id": sid, "name": name})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/special-sections/<int:section_id>", methods=["DELETE"])
+@login_required
+def api_delete_special_section(section_id):
+    db.delete_special_section(section_id)
+    return jsonify({"ok": True})
 
 
 # ── Chat API (Telegram-style natural language entry) ──────────────────────────
