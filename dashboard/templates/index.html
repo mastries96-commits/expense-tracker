@@ -827,9 +827,12 @@
 
     <!-- Variable Expenses table -->
     <div class="table-card">
-      <div class="table-header">
-        <h6><i class="fa-solid fa-list me-2"></i>Expenses</h6>
-        <div style="display:flex;align-items:center;gap:8px">
+      <div class="table-header" style="cursor:pointer" onclick="toggleExpensesList(event)">
+        <h6 style="display:flex;align-items:center;gap:8px">
+          <i class="fa-solid fa-list me-2"></i>Expenses
+          <i id="expenses-chevron" class="fa-solid fa-chevron-up" style="font-size:.65rem;color:var(--muted);transition:transform .2s;margin-left:4px"></i>
+        </h6>
+        <div style="display:flex;align-items:center;gap:8px" onclick="event.stopPropagation()">
           <div style="position:relative">
             <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.75rem;pointer-events:none"></i>
             <input id="txn-search-input" type="text" placeholder="Search…" oninput="onSearchInput(this.value)"
@@ -1353,6 +1356,14 @@ function clearDateFilter() {
     dailyChart.update('none');
   }
   if (currentData) renderTransactions(currentData);
+}
+
+function toggleExpensesList(e) {
+  const wrap = document.getElementById('transactions-wrap');
+  const icon = document.getElementById('expenses-chevron');
+  const collapsed = wrap.style.display === 'none';
+  wrap.style.display = collapsed ? '' : 'none';
+  icon.style.transform = collapsed ? '' : 'rotate(180deg)';
 }
 
 function onSearchInput(val) {
