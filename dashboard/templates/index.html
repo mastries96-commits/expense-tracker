@@ -815,9 +815,17 @@
     <div class="table-card">
       <div class="table-header">
         <h6><i class="fa-solid fa-list me-2"></i>Expenses</h6>
-        <button id="reclassify-btn" class="action-btn" style="font-size:.75rem;padding:5px 12px;border-radius:8px" onclick="reclassifyAll(this)">
-          <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Fix Categories
-        </button>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="position:relative">
+            <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.75rem;pointer-events:none"></i>
+            <input id="txn-search-input" type="text" placeholder="Search…" oninput="onSearchInput(this.value)"
+                   style="padding:5px 28px 5px 28px;border:1px solid var(--border);border-radius:8px;font-size:.82rem;background:var(--bg);color:var(--text);outline:none;width:150px"/>
+            <button id="txn-search-clear" onclick="clearSearch()" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:2px;line-height:1">×</button>
+          </div>
+          <button id="reclassify-btn" class="action-btn" style="font-size:.75rem;padding:5px 12px;border-radius:8px" onclick="reclassifyAll(this)">
+            <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Fix Categories
+          </button>
+        </div>
       </div>
       <div id="transactions-wrap">
         <div class="empty-state">
@@ -1132,6 +1140,7 @@ let barChart    = null;
 let dailyChart  = null;
 let detailPie   = null;
 let allTransactions = [];
+let searchQuery     = '';
 const AED = n => 'AED ' + Number(n).toLocaleString('en-US', {minimumFractionDigits:2,maximumFractionDigits:2});
 
 const CATEGORY_PALETTE = [
@@ -1264,6 +1273,20 @@ function clearDateFilter() {
     });
     dailyChart.update('none');
   }
+  if (currentData) renderTransactions(currentData);
+}
+
+function onSearchInput(val) {
+  searchQuery = val;
+  document.getElementById('txn-search-clear').style.display = val ? 'inline' : 'none';
+  if (currentData) renderTransactions(currentData);
+}
+
+function clearSearch() {
+  searchQuery = '';
+  const inp = document.getElementById('txn-search-input');
+  if (inp) inp.value = '';
+  document.getElementById('txn-search-clear').style.display = 'none';
   if (currentData) renderTransactions(currentData);
 }
 
@@ -1511,9 +1534,20 @@ function renderTransactions(d) {
     allTransactions.push({ id:e.id, date:e.expense_date, category:e.category, amount:e.amount, description:e.description||'' });
   });
 
+  // Apply search filter on top of everything
+  const _sq = searchQuery.toLowerCase().trim();
+  const filtered = _sq
+    ? allTransactions.filter(t =>
+        t.category.toLowerCase().includes(_sq) ||
+        (t.description||'').toLowerCase().includes(_sq) ||
+        String(t.amount).includes(_sq) ||
+        t.date.includes(_sq)
+      )
+    : allTransactions;
+
   // ── Date filter (from daily chart click) ─────────────────────────────────────
   if (dateFilter) {
-    const rows  = allTransactions.filter(t => t.date === dateFilter);
+    const rows  = filtered.filter(t => t.date === dateFilter);
     const total = rows.reduce((s,t) => s + t.amount, 0);
     const label = new Date(dateFilter + 'T00:00:00').toLocaleDateString('en-AE', { weekday:'short', day:'numeric', month:'long', year:'numeric' });
     const filterBar = `
@@ -1559,7 +1593,7 @@ function renderTransactions(d) {
 
   // ── Category filter (from pie chart click) — flat list with filter bar ──────
   if (catFilter) {
-    const rows = allTransactions.filter(t => t.category.toLowerCase() === catFilter);
+    const rows = filtered.filter(t => t.category.toLowerCase() === catFilter);
     const isSav = catFilter === 'savings';
     const color = isSav ? '#14B8A6' : '#EF4444';
     const filterBar = `
@@ -1598,6 +1632,47 @@ function renderTransactions(d) {
           <th style="${thStyle}">Description</th><th style="${thStyle}"></th>
         </tr></thead>
         <tbody>${tbody}</tbody>
+      </table>`;
+    return;
+  }
+
+  // ── Search results flat view ──────────────────────────────────────────────────
+  if (_sq) {
+    const thStyle = 'font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:7px 20px;background:var(--surface);text-align:left;border-bottom:1px solid var(--border)';
+    const searchBar = `
+      <div style="padding:10px 20px;background:rgba(0,184,154,.07);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:.82rem;color:var(--text)">
+          <i class="fa-solid fa-magnifying-glass me-2" style="color:var(--primary);font-size:.75rem"></i>
+          <strong>${filtered.length}</strong> result${filtered.length!==1?'s':''} for <em>"${searchQuery}"</em>
+        </span>
+        <button onclick="clearSearch()" style="background:none;border:none;color:var(--primary);font-size:.8rem;font-weight:600;cursor:pointer;padding:0">Clear ×</button>
+      </div>`;
+    if (!filtered.length) {
+      wrap.innerHTML = searchBar + `<div class="empty-state"><i class="fa-solid fa-magnifying-glass"></i><p>No results for "${searchQuery}"</p></div>`;
+      return;
+    }
+    const rows = filtered.map(t => {
+      const safeDesc = (t.description||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const safeCat  = t.category.replace(/'/g,"\\'");
+      const color    = t.category === 'savings' ? 'var(--savings)' : 'var(--expense)';
+      return `<tr>
+        <td style="color:var(--muted);font-size:.8rem;padding:9px 20px">${t.date}</td>
+        <td style="font-size:.8rem;color:var(--muted);padding:9px 20px">${t.category}</td>
+        <td style="font-weight:600;color:${color};padding:9px 20px">${AED(t.amount)}</td>
+        <td style="color:var(--muted);font-size:.82rem;padding:9px 20px">${t.description||'—'}</td>
+        <td style="white-space:nowrap;text-align:right;padding:9px 12px">
+          <button class="action-btn edit-btn" onclick="openEditModal(${t.id},'${safeCat}',${t.amount},'${t.date}','${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="action-btn del-btn" onclick="deleteExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+    wrap.innerHTML = searchBar + `
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr>
+          <th style="${thStyle}">Date</th><th style="${thStyle}">Category</th>
+          <th style="${thStyle}">Amount</th><th style="${thStyle}">Description</th><th style="${thStyle}"></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
       </table>`;
     return;
   }
