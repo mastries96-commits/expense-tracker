@@ -847,6 +847,9 @@
                    style="padding:5px 28px 5px 28px;border:1px solid var(--border);border-radius:8px;font-size:.82rem;background:var(--bg);color:var(--text);outline:none;width:150px"/>
             <button id="txn-search-clear" onclick="clearSearch()" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:.9rem;padding:2px;line-height:1">×</button>
           </div>
+          <button id="view-mode-btn" class="action-btn" style="font-size:.75rem;padding:5px 12px;border-radius:8px" onclick="toggleExpenseViewMode()">
+            <i class="fa-solid fa-calendar-days me-1"></i>By Date
+          </button>
           <button id="reclassify-btn" class="action-btn" style="font-size:.75rem;padding:5px 12px;border-radius:8px" onclick="reclassifyAll(this)">
             <i class="fa-solid fa-wand-magic-sparkles me-1"></i>Fix Categories
           </button>
@@ -1328,6 +1331,7 @@ function renderEmpty() {
 // ── Category filter ──────────────────────────────────────────────────────────
 let catFilter  = null;
 let dateFilter = null;
+let expenseViewMode = 'grouped'; // 'grouped' | 'bydate'
 
 function filterByCategory(rawCat) {
   catFilter  = catFilter === rawCat ? null : rawCat;
@@ -1372,6 +1376,26 @@ function toggleExpensesList(e) {
   const collapsed = wrap.style.display === 'none';
   wrap.style.display = collapsed ? '' : 'none';
   icon.style.transform = collapsed ? '' : 'rotate(180deg)';
+}
+
+function toggleExpenseViewMode() {
+  expenseViewMode = expenseViewMode === 'grouped' ? 'bydate' : 'grouped';
+  const btn = document.getElementById('view-mode-btn');
+  if (expenseViewMode === 'bydate') {
+    btn.innerHTML = '<i class="fa-solid fa-layer-group me-1"></i>By Category';
+    btn.style.background = 'var(--primary)';
+    btn.style.color = '#fff';
+    // ensure list is visible
+    const wrap = document.getElementById('transactions-wrap');
+    const icon = document.getElementById('expenses-chevron');
+    wrap.style.display = '';
+    icon.style.transform = '';
+  } else {
+    btn.innerHTML = '<i class="fa-solid fa-calendar-days me-1"></i>By Date';
+    btn.style.background = '';
+    btn.style.color = '';
+  }
+  if (currentData) renderTransactions(currentData);
 }
 
 function onSearchInput(val) {
@@ -1867,6 +1891,55 @@ function renderTransactions(d) {
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
+    return;
+  }
+
+  // ── Flat by-date view ─────────────────────────────────────────────────────────
+  if (expenseViewMode === 'bydate') {
+    if (!allTransactions.length) {
+      wrap.innerHTML = '<div class="empty-state"><i class="fa-solid fa-receipt"></i><p>No expenses yet — add via Telegram.</p></div>';
+      return;
+    }
+    const sorted = filtered.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id - a.id);
+    const thStyle = 'font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:7px 20px;background:var(--surface);text-align:left;border-bottom:1px solid var(--border)';
+    let lastDate = null;
+    const rows = sorted.map(t => {
+      const safeDesc = (t.description||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const safeCat  = t.category.replace(/'/g,"\\'");
+      const color    = t.category === 'savings' ? 'var(--savings)' : 'var(--expense)';
+      const icon     = catIcon(t.category);
+      let dateRow = '';
+      if (t.date !== lastDate) {
+        lastDate = t.date;
+        const label = new Date(t.date + 'T00:00:00').toLocaleDateString('en-AE', { weekday:'short', day:'numeric', month:'short' });
+        dateRow = `<tr><td colspan="5" style="padding:10px 20px 4px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--border);background:var(--surface)">${label}</td></tr>`;
+      }
+      return dateRow + `<tr>
+        <td style="padding:10px 20px;font-size:.8rem">
+          <span style="display:inline-flex;align-items:center;gap:6px">
+            <span style="width:24px;height:24px;border-radius:7px;background:${color}18;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0">
+              <i class="fa-solid fa-${icon}" style="font-size:.65rem;color:${color}"></i>
+            </span>
+            <span style="color:var(--text)">${t.category.charAt(0).toUpperCase()+t.category.slice(1)}</span>
+          </span>
+        </td>
+        <td style="font-weight:600;color:${color};padding:10px 20px">${AED(t.amount)}</td>
+        <td style="color:var(--muted);font-size:.82rem;padding:10px 20px">${t.description||'—'}</td>
+        <td style="white-space:nowrap;text-align:right;padding:10px 12px">
+          <button class="action-btn edit-btn" onclick="openEditModal(${t.id},'${safeCat}',${t.amount},'${t.date}','${safeDesc}')" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="action-btn del-btn" onclick="deleteExpense(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+    wrap.innerHTML = `<table style="width:100%;border-collapse:collapse">
+      <thead><tr>
+        <th style="${thStyle}">Category</th>
+        <th style="${thStyle}">Amount</th>
+        <th style="${thStyle}">Description</th>
+        <th style="${thStyle}"></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
     return;
   }
 
