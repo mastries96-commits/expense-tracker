@@ -596,19 +596,51 @@ def api_chat():
 
 # ── Telegram webhook setup ────────────────────────────────────────────────────
 
+def _register_webhook():
+    """Register Telegram webhook using RENDER_EXTERNAL_URL. Returns True on success."""
+    import urllib.request as _ur, json as _json
+    token = os.environ.get("BOT_TOKEN", "")
+    base  = (os.environ.get("RENDER_EXTERNAL_URL") or "").rstrip("/")
+    if not token or not base:
+        return False
+    webhook_url = f"{base}/webhook/{token}"
+    try:
+        api_url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
+        with _ur.urlopen(api_url, timeout=10) as r:
+            result = _json.loads(r.read())
+        app.logger.info("Telegram webhook registered: %s → %s", webhook_url, result.get("description"))
+        return result.get("ok", False)
+    except Exception as exc:
+        app.logger.error("Webhook registration failed: %s", exc)
+        return False
+
+
+def _webhook_keepalive():
+    """Re-register webhook on startup and every 6 h so Telegram never auto-clears it."""
+    import time
+    time.sleep(5)
+    _register_webhook()
+    while True:
+        time.sleep(6 * 3600)
+        _register_webhook()
+
+
+if os.environ.get("RENDER"):
+    import threading
+    threading.Thread(target=_webhook_keepalive, daemon=True, name="webhook-keepalive").start()
+
+
 @app.route("/setup-webhook")
 @login_required
 def setup_webhook():
-    import urllib.request, json as _json
+    ok = _register_webhook()
     token = os.environ.get("BOT_TOKEN", "")
+    base  = (os.environ.get("RENDER_EXTERNAL_URL") or "").rstrip("/")
     if not token:
-        return jsonify({"error": "BOT_TOKEN is not set in Render environment variables. Add it in the Render dashboard under Environment."}), 500
-    host = request.host_url.rstrip("/")
-    webhook_url = f"{host}/webhook/{token}"
-    api_url = f"https://api.telegram.org/bot{token}/setWebhook?url={webhook_url}"
-    with urllib.request.urlopen(api_url) as r:
-        result = _json.loads(r.read())
-    return jsonify({"webhook_url": webhook_url, "telegram_response": result})
+        return jsonify({"error": "BOT_TOKEN not set"}), 500
+    if not base:
+        return jsonify({"error": "RENDER_EXTERNAL_URL not set — add it in Render environment variables"}), 500
+    return jsonify({"ok": ok, "webhook_url": f"{base}/webhook/{token}"})
 
 
 # ── Telegram webhook (used when deployed on Render/cloud) ────────────────────
