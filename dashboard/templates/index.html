@@ -1912,7 +1912,10 @@ function renderTransactions(d) {
       if (t.date !== lastDate) {
         lastDate = t.date;
         const label = new Date(t.date + 'T00:00:00').toLocaleDateString('en-AE', { weekday:'short', day:'numeric', month:'short' });
-        dateRow = `<tr><td colspan="5" style="padding:10px 20px 4px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--border);background:var(--surface)">${label}</td></tr>`;
+        dateRow = `<tr><td colspan="5" style="padding:10px 20px 4px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--border);background:var(--surface)">
+          ${label}
+          <button onclick="showAddModal('','${t.date}')" style="margin-left:8px;background:none;border:none;color:var(--primary);font-size:.68rem;font-weight:600;cursor:pointer;padding:0;letter-spacing:.03em;text-transform:none;opacity:.8" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.8">+ add</button>
+        </td></tr>`;
       }
       return dateRow + `<tr>
         <td style="padding:10px 20px;font-size:.8rem">
@@ -2313,8 +2316,8 @@ async function confirmUndo() {
 }
 
 // ── Add Entry ────────────────────────────────────────────────────────────────
-function showAddModal(prefillCat) {
-  document.getElementById('f-date').value = new Date().toISOString().split('T')[0];
+function showAddModal(prefillCat, prefillDate) {
+  document.getElementById('f-date').value = prefillDate || new Date().toISOString().split('T')[0];
   document.getElementById('f-category').value = prefillCat || '';
   document.getElementById('f-amount').value = '';
   document.getElementById('f-desc').value = '';
