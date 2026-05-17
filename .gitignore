@@ -31,3 +31,4 @@ Thumbs.db
 # ── Local data folders
 data/
 static/
+backups/
